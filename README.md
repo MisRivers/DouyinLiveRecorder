@@ -9,6 +9,7 @@ GitHub 仓库：<https://github.com/MisRivers/DouyinLiveRecorder>
 ## 目录
 
 - [项目由来](#项目由来)
+- [界面预览](#界面预览)
 - [功能概览](#功能概览)
 - [技术栈](#技术栈)
 - [系统架构](#系统架构)
@@ -41,6 +42,30 @@ LiveRecorder Web UI 在保留上游平台解析与 FFmpeg 录制能力的基础�
 - 直播间、录制文件、系统配置、运行状态的可视化管理；
 - 多架构 Docker 镜像，NAS 可直接拉取；
 - 兼容上游 `config.ini` / `URL_config.ini` 的导入与生成。
+
+## 界面预览
+
+以下截图来自实际运行的管理端，桌面端浏览器宽度 1024px。
+
+| 初始化管理员 | 录制状态 |
+| --- | --- |
+| ![创建管理员](.screenshots/01-login.png) | ![录制状态](.screenshots/02-live-status.png) |
+
+| 新增直播间 | 录制进行中 |
+| --- | --- |
+| ![新增直播间](.screenshots/03-room-add.png) | ![录制进行中](.screenshots/04-recording.png) |
+
+| 直播间管理 | 录制文件播放 |
+| --- | --- |
+| ![直播间管理](.screenshots/05-rooms.png) | ![录制文件播放](.screenshots/06-player.png) |
+
+| 系统配置 | 系统信息 |
+| --- | --- |
+| ![系统配置](.screenshots/07-settings.png) | ![系统信息](.screenshots/08-system.png) |
+
+| 导入直播间 | |
+| --- | --- |
+| ![导入直播间](.screenshots/09-import.png) | |
 
 ## 功能概览
 
