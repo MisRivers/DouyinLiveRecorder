@@ -31,6 +31,7 @@ MANIFEST
 #  before PyInstaller builds the exe, so as to inject date/other infos into it.
 *.manifest
 *.spec
+!webui/webui.spec
 
 # Installer logs
 pip-log.txt
@@ -165,3 +166,23 @@ cython_debug/
 #.idea/
 
 backup_config/
+
+# Web UI runtime and build artifacts
+data/
+webui/frontend/node_modules/
+webui/frontend/dist/
+webui/backend/static/
+
+# Local configuration, downloaded media, logs and internal docs (never publish)
+config/
+docs/
+.aoci/
+aoci.txt
+aoci.code.txt
+aoci.meta.txt
+AGENTS.md
+.DS_Store
+**/.DS_Store
+
+# External ffmpeg runtime (not versioned)
+ffmpeg/

@@ -1,679 +1,468 @@
-![video_spider](https://socialify.git.ci/ihmily/DouyinLiveRecorder/image?font=Inter&forks=1&language=1&owner=1&pattern=Circuit%20Board&stargazers=1&theme=Light)
-
-## 💡简介
-[![Python Version](https://img.shields.io/badge/python-3.11.6-blue.svg)](https://www.python.org/downloads/release/python-3116/)
-[![Supported Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux-blue.svg)](https://github.com/ihmily/DouyinLiveRecorder)
-[![Docker Pulls](https://img.shields.io/docker/pulls/ihmily/douyin-live-recorder?label=Docker%20Pulls&color=blue&logo=docker)](https://hub.docker.com/r/ihmily/douyin-live-recorder/tags)
-![GitHub issues](https://img.shields.io/github/issues/ihmily/DouyinLiveRecorder.svg)
-[![Latest Release](https://img.shields.io/github/v/release/ihmily/DouyinLiveRecorder)](https://github.com/ihmily/DouyinLiveRecorder/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/ihmily/DouyinLiveRecorder/total)](https://github.com/ihmily/DouyinLiveRecorder/releases/latest)
-
-一款**简易**的可循环值守的直播录制工具，基于FFmpeg实现多平台直播源录制，支持自定义配置录制以及直播状态推送。
-
-</div>
-
-## 😺已支持平台
-
-- [x] 抖音
-- [x] TikTok
-- [x] 快手
-- [x] 虎牙
-- [x] 斗鱼
-- [x] YY
-- [x] B站
-- [x] 小红书
-- [x] bigo 
-- [x] blued
-- [x] SOOP(原AfreecaTV)
-- [x] 网易cc
-- [x] 千度热播
-- [x] PandaTV
-- [x] 猫耳FM
-- [x] Look直播
-- [x] WinkTV
-- [x] TTingLive(原Flextv)
-- [x] PopkonTV
-- [x] TwitCasting
-- [x] 百度直播
-- [x] 微博直播
-- [x] 酷狗直播
-- [x] TwitchTV
-- [x] LiveMe
-- [x] 花椒直播
-- [x] 流星直播
-- [x] ShowRoom
-- [x] Acfun
-- [x] 映客直播
-- [x] 音播直播
-- [x] 知乎直播
-- [x] CHZZK
-- [x] 嗨秀直播
-- [x] vv星球直播
-- [x] 17Live
-- [x] 浪Live
-- [x] 畅聊直播
-- [x] 飘飘直播
-- [x] 六间房直播
-- [x] 乐嗨直播
-- [x] 花猫直播
-- [x] Shopee
-- [x] Youtube
-- [x] 淘宝
-- [x] 京东
-- [x] Faceit
-- [x] 咪咕
-- [x] 连接直播
-- [x] 来秀直播
-- [x] Picarto
-- [ ] 更多平台正在更新中
-
-</div>
-
-## 🎈项目结构
-
-```
-.
-└── DouyinLiveRecorder/
-    ├── /config -> (config record)
-    ├── /logs -> (save runing log file)
-    ├── /backup_config -> (backup file)
-    ├── /douyinliverecorder -> (package)
-        ├── initializer.py-> (check and install nodejs)
-    	├── spider.py-> (get live data)
-    	├── stream.py-> (get live stream address)
-    	├── utils.py -> (contains utility functions)
-    	├── logger.py -> (logger handdle)
-    	├── room.py -> (get room info)
-    	├── ab_sign.py-> (generate dy token)
-    	├── /javascript -> (some decrypt code)
-    ├── main.py -> (main file)
-    ├── ffmpeg_install.py -> (ffmpeg install script)
-    ├── demo.py -> (call package test demo)
-    ├── msg_push.py -> (send live status update message)
-    ├── ffmpeg.exe -> (record video)
-    ├── index.html -> (play m3u8 and flv video)
-    ├── requirements.txt -> (library dependencies)
-    ├── docker-compose.yaml -> (Container Orchestration File)
-    ├── Dockerfile -> (Application Build Recipe)
-    ├── StopRecording.vbs -> (stop recording script on Windows)
-    ...
-```
-
-</div>
-
-## 🌱使用说明
-
-- 对于只想使用录制软件的小白用户，进入[Releases](https://github.com/ihmily/DouyinLiveRecorder/releases) 中下载最新发布的 zip压缩包即可，里面有打包好的录制软件。（有些电脑可能会报毒，直接忽略即可，如果下载时被浏览器屏蔽，请更换浏览器下载）
-
-- 压缩包解压后，在 `config` 文件夹内的 `URL_config.ini` 中添加录制直播间地址，一行一个直播间地址。如果要自定义配置录制，可以修改`config.ini` 文件，推荐将录制格式修改为`ts`。
-- 以上步骤都做好后，就可以运行`DouyinLiveRecorder.exe` 程序进行录制了。录制的视频文件保存在同目录下的 `downloads` 文件夹内。
-
-- 另外，如果需要录制TikTok、AfreecaTV等海外平台，请在配置文件中设置开启代理并添加proxy_addr链接 如：`127.0.0.1:7890` （这只是示例地址，具体根据实际填写）。
-
-- 假如`URL_config.ini`文件中添加的直播间地址，有个别直播间暂时不想录制又不想移除链接，可以在对应直播间的链接开头加上`#`，那么将停止该直播间的监测以及录制。
-
-- 软件默认录制清晰度为 `原画` ，如果要单独设置某个直播间的录制画质，可以在添加直播间地址时前面加上画质即可，如`超清，https://live.douyin.com/745964462470` 记得中间要有`,` 分隔。
-
-- 如果要长时间挂着软件循环监测直播，最好循环时间设置长一点（咱也不差没录制到的那几分钟），避免因请求频繁导致被官方封禁IP 。
-
-- 要停止直播录制，Windows平台可执行StopRecording.vbs脚本文件，或者在录制界面使用 `Ctrl+C ` 组合键中断录制，若要停止其中某个直播间的录制，可在`URL_config.ini`文件中的地址前加#，会自动停止对应直播间的录制并正常保存已录制的视频。
-- 最后，欢迎右上角给本项目一个star，同时也非常乐意大家提交pr。
-
-&emsp;
-
-直播间链接示例：
-
-```
-抖音:
-https://live.douyin.com/745964462470
-https://v.douyin.com/iQFeBnt/
-https://live.douyin.com/yall1102  （链接+抖音号）
-https://v.douyin.com/CeiU5cbX  （主播主页地址）
-
-TikTok:
-https://www.tiktok.com/@pearlgaga88/live
-
-快手:
-https://live.kuaishou.com/u/yall1102
-
-虎牙:
-https://www.huya.com/52333
-
-斗鱼:
-https://www.douyu.com/3637778?dyshid=
-https://www.douyu.com/topic/wzDBLS6?rid=4921614&dyshid=
-
-YY:
-https://www.yy.com/22490906/22490906
-
-B站:
-https://live.bilibili.com/320
-
-小红书（直播间分享地址):
-http://xhslink.com/xpJpfM
-
-bigo直播:
-https://www.bigo.tv/cn/716418802
-
-buled直播:
-https://app.blued.cn/live?id=Mp6G2R
-
-SOOP:
-https://play.sooplive.co.kr/sw7love
-
-网易cc:
-https://cc.163.com/583946984
-
-千度热播:
-https://qiandurebo.com/web/video.php?roomnumber=33333
-
-PandaTV:
-https://www.pandalive.co.kr/live/play/bara0109
-
-猫耳FM:
-https://fm.missevan.com/live/868895007
-
-Look直播:
-https://look.163.com/live?id=65108820&position=3
-
-WinkTV:
-https://www.winktv.co.kr/live/play/anjer1004
-
-FlexTV(TTinglive)::
-https://www.flextv.co.kr/channels/593127/live
-
-PopkonTV:
-https://www.popkontv.com/live/view?castId=wjfal007&partnerCode=P-00117
-https://www.popkontv.com/channel/notices?mcid=wjfal007&mcPartnerCode=P-00117
-
-TwitCasting:
-https://twitcasting.tv/c:uonq
-
-百度直播:
-https://live.baidu.com/m/media/pclive/pchome/live.html?room_id=9175031377&tab_category
-
-微博直播:
-https://weibo.com/l/wblive/p/show/1022:2321325026370190442592
-
-酷狗直播:
-https://fanxing2.kugou.com/50428671?refer=2177&sourceFrom=
-
-TwitchTV:
-https://www.twitch.tv/gamerbee
-
-LiveMe:
-https://www.liveme.com/zh/v/17141543493018047815/index.html
-
-花椒直播:
-https://www.huajiao.com/l/345096174
-
-流星直播:
-https://www.7u66.com/100960
-
-ShowRoom:
-https://www.showroom-live.com/room/profile?room_id=480206  （主播主页地址）
-
-Acfun:
-https://live.acfun.cn/live/179922
-
-映客直播:
-https://www.inke.cn/liveroom/index.html?uid=22954469&id=1720860391070904
-
-音播直播:
-https://live.ybw1666.com/800002949
-
-知乎直播:
-https://www.zhihu.com/people/ac3a467005c5d20381a82230101308e9 (主播主页地址)
-
-CHZZK:
-https://chzzk.naver.com/live/458f6ec20b034f49e0fc6d03921646d2
-
-嗨秀直播:
-https://www.haixiutv.com/6095106
-
-VV星球直播:
-https://h5webcdn-pro.vvxqiu.com//activity/videoShare/videoShare.html?h5Server=https://h5p.vvxqiu.com&roomId=LP115924473&platformId=vvstar
-
-17Live:
-https://17.live/en/live/6302408
-
-浪Live:
-https://www.lang.live/en-US/room/3349463
-
-畅聊直播:
-https://live.tlclw.com/106188
-
-飘飘直播:
-https://m.pp.weimipopo.com/live/preview.html?uid=91648673&anchorUid=91625862&app=plpl
-
-六间房直播:
-https://v.6.cn/634435
-
-乐嗨直播:
-https://www.lehaitv.com/8059096
-
-花猫直播:
-https://h.catshow168.com/live/preview.html?uid=19066357&anchorUid=18895331
-
-Shopee:
-https://sg.shp.ee/GmpXeuf?uid=1006401066&session=802458
-
-Youtube:
-https://www.youtube.com/watch?v=cS6zS5hi1w0
-
-淘宝(需cookie):
-https://tbzb.taobao.com/live?liveId=532359023188
-https://m.tb.cn/h.TWp0HTd
-
-京东:
-https://3.cn/28MLBy-E
-
-Faceit:
-https://www.faceit.com/zh/players/Compl1/stream
-
-连接直播:
-https://show.lailianjie.com/10000258
-
-咪咕直播:
-https://www.miguvideo.com/p/live/120000541321
-
-来秀直播:
-https://www.imkktv.com/h5/share/video.html?uid=1845195&roomId=1710496
-
-Picarto:
-https://www.picarto.tv/cuteavalanche
+# LiveRecorder Web UI
+
+GitHub 仓库：<https://github.com/MisRivers/DouyinLiveRecorder>
+
+一个面向自托管场景的直播录制管理端，基于 [ihmily/DouyinLiveRecorder](https://github.com/ihmily/DouyinLiveRecorder) 改造而来。它把原本依赖命令行、配置文件和循环值守的录制工具，变成可直接在浏览器和手机端使用的管理系统。
+
+> 本项目是非官方改造版本，与上游项目及抖音官方均无隶属关系。请仅录制你有权录制的内容，并遵守所在平台的服务条款与当地法律法规。
+
+## 目录
+
+- [项目由来](#项目由来)
+- [功能概览](#功能概览)
+- [技术栈](#技术栈)
+- [系统架构](#系统架构)
+- [目录结构](#目录结构)
+- [快速开始](#快速开始)
+- [使用说明](#使用说明)
+- [配置项](#配置项)
+- [Docker 部署](#docker-部署)
+- [Windows EXE](#windows-exe)
+- [数据与安全](#数据与安全)
+- [常见问题](#常见问题)
+- [路线图](#路线图)
+- [上游与许可](#上游与许可)
+
+## 项目由来
+
+上游 DouyinLiveRecorder 是一个成熟的 Python 直播录制工具，长期通过 `config.ini`、`URL_config.ini` 和命令行运行。实际长期值守时，会遇到几个问题：
+
+- 查看录制状态、修改直播间、检查文件都需要登录服务器或编辑配置文件；
+- 缺少直播间增删改查、录制文件浏览、播放、TS 转 MP4 的统一入口；
+- 多平台 Cookie、账号、推送配置分散，修改后不容易确认是否生效；
+- 手机端无法方便地查看录制状态和处理异常；
+- 部署到 NAS 时，命令行、权限、FFmpeg 路径等门槛较高。
+
+LiveRecorder Web UI 在保留上游平台解析与 FFmpeg 录制能力的基础上，增加了：
+
+- Vue 3 单页管理端，桌面端与手机端自适应；
+- FastAPI 后端与 SQLite 运行期数据；
+- 录制进程、转码进程与 Web 进程分离；
+- 直播间、录制文件、系统配置、运行状态的可视化管理；
+- 多架构 Docker 镜像，NAS 可直接拉取；
+- 兼容上游 `config.ini` / `URL_config.ini` 的导入与生成。
+
+## 功能概览
+
+### 录制状态
+
+- 正在录制、等待直播、启用直播间、录制程序状态四张摘要卡；
+- 录制卡片显示主播、平台、画质、标题、已录制时长、文件大小、当前文件；
+- 录制控制迁移到顶部导航，任意页面都可以查看状态并启动、停止、重启；
+- 停止时区分优雅停止与强制停止，优雅停止会把 TS 加入转码队列；
+- WebSocket 实时刷新，断线时自动回退轮询；
+- 直播信号中断时自动重连，30 秒内恢复会继续本次录制。
+
+### 直播间管理
+
+- 新增、编辑、删除、启用/停用直播间；
+- 支持快速填充平台 ID 或填写完整直播间地址；
+- 支持批量导入、导出上游 `URL_config.ini` 格式；
+- 支持搜索、平台筛选、分页，每页条数写入浏览器缓存；
+- 从录制卡片点击“前往直播间管理”会定位到对应主播所在页，目标行黄色闪烁并显示“已定位”；
+- 停用正在录制的直播间会二次确认，优雅结束当前文件并转 MP4。
+
+### 录制文件
+
+- 按主播分组浏览录制文件；
+- 显示文件名、类型、大小、修改时间、转码状态；
+- 支持按名称、修改时间、类型排序，排序写入浏览器缓存；
+- 支持右键删除、批量勾选删除、批量转码；
+- 内置播放器支持 MP4、M4A、MP3、FLV、TS；
+- TS 使用 mpegts.js 播放，MP4 使用 HTML5 视频和统一自定义控制条；
+- 支持在新标签页打开播放，新标签接管后自动关闭当前弹窗，避免两处同时播放；
+- 播放弹窗自适应手机端，音量控制已移除以简化控制条。
+
+### 系统配置
+
+- 录制设置、推送配置、账号与授权、Cookie 管理四个分类；
+- 配置项由元数据驱动，未知配置自动归入“上游新增”；
+- 布尔、枚举、整数、浮点、多行文本、敏感值分别使用对应控件；
+- 直播状态推送渠道支持多选下拉，保存为逗号分隔字符串，兼容上游推送逻辑；
+- 支持导出、导入 `config.ini`，保存后自动生成兼容文件；
+- 刷新或关闭页面时，如果存在未保存修改会提示。
+
+### 系统信息与账号
+
+- 应用版本、上游版本、数据库大小、录制目录、配置目录；
+- 数据库、磁盘、FFmpeg、Worker 心跳等环境检查；
+- 运行日志查看与刷新；
+- 修改管理员密码；
+- 桌面端退出登录在左下角账号菜单，移动端在系统信息页。
+
+## 技术栈
+
+| 层次   | 技术                                                                |
+| ---- | ----------------------------------------------------------------- |
+| 前端   | Vue 3 `<script setup>`、Vite、Vue Router、原生 CSS 变量、mpegts.js、flv.js |
+| 后端   | Python 3.11、FastAPI、Uvicorn、SQLite、WebSocket                      |
+| 录制   | FFmpeg、上游平台解析与录制逻辑                                                |
+| 进程模型 | Web 进程、录制 Worker、转码 Worker                                        |
+| 部署   | Docker 多架构镜像（linux/amd64、linux/arm64）、Docker Compose              |
+| 预留   | Windows EXE（PyInstaller，当前版本优先 Docker）                            |
+
+## 系统架构
+
+```mermaid
+flowchart LR
+    Browser["浏览器 / 手机 Web"] -->|HTTP / WebSocket| API["FastAPI Web 进程"]
+    API --> DB[("SQLite")]
+    API -->|命令队列| Recorder["录制 Worker"]
+    API -->|命令队列| Converter["转码 Worker"]
+    Recorder -->|平台解析 / 取流| Platform["直播平台"]
+    Recorder -->|FFmpeg| Files["录制文件目录"]
+    Converter -->|FFmpeg| Files
+    API -->|读取 / 播放| Files
+    API -->|生成| Config["config.ini / URL_config.ini"]
 ```
 
-&emsp;
+核心设计：
 
-## 🎃源码运行
-使用源码运行，可参考下面的步骤。
+- **SQLite 是运行期唯一事实来源**。设置、直播间、录制状态、转码任务、审计记录都写入 SQLite。
+- **兼容文件是导出物**。`config/config.ini` 与 `config/URL_config.ini` 由系统按需生成，供人工查看、迁移和上游工具兼容。
+- **Web 与录制分离**。Web 进程只负责 API 与 UI，录制和转码在独立 Worker 中运行，避免阻塞页面。
+- **命令队列**。启动、停止、重启、转码等操作写入队列，由 Worker 消费，页面通过 WebSocket 或轮询获取状态。
+- **多平台适配**。平台列表、URL 模板、画质选项由平台注册表统一维护，新增平台时不需要改页面结构。
+- **多架构镜像**。同一个 `latest` 标签包含 amd64 与 arm64，NAS 和服务器拉取时自动匹配。
 
-1.首先拉取或手动下载本仓库项目代码
+### 录制状态机
+
+```text
+stopped -> starting -> running -> stopping -> stopped
+                         |
+                         +-> error
+```
+
+单个直播间的状态包括：`disabled`、`checking`、`waiting`、`live`、`recording`、`stopping`、`error`。
+
+## 目录结构
+
+```text
+DouyinLiveRecorder/
+├── config/                     # 运行配置与兼容 ini（不入镜像）
+├── data/                       # SQLite、密钥、缩略图、备份
+├── downloads/                  # 录制文件
+├── docs/                       # 技术设计与项目文档
+├── src/                        # 上游平台解析与录制逻辑
+├── webui/
+│   ├── backend/
+│   │   ├── routers/            # auth / live / rooms / files / settings / system / ws
+│   │   ├── services/           # 业务服务
+│   │   ├── workers/            # recorder_worker / converter_worker
+│   │   ├── static/             # Vite 构建产物
+│   │   ├── config.py           # 路径、端口、环境变量
+│   │   ├── db.py               # SQLite、设置种子、ini 渲染
+│   │   ├── main.py             # FastAPI 应用入口
+│   │   └── settings_meta.py    # 配置元数据与分组
+│   ├── frontend/
+│   │   ├── src/views/          # Live / Files / Rooms / Settings / System / Login / Play
+│   │   ├── src/components/     # AppShell、Player、RecorderControl、Modal 等
+│   │   ├── src/styles.css      # 设计令牌与全局样式
+│   │   └── vite.config.js
+│   ├── Dockerfile
+│   └── docker-entrypoint.sh
+├── docker-compose.webui.yaml
+├── run_webui.py
+├── requirements.txt
+└── webui/requirements.txt
+```
+
+## 快速开始
+
+### 方式一：Docker（推荐）
+
+公开镜像：
+
+```text
+misrivers/dlr-webui:latest
+```
+
+支持 `linux/amd64` 与 `linux/arm64`，同一标签自动匹配架构，NAS 无需登录 Docker。
 
 ```bash
-git clone https://github.com/ihmily/DouyinLiveRecorder.git
+docker pull misrivers/dlr-webui:latest
 ```
 
-2.进入项目文件夹，安装依赖
+使用仓库内的 Compose 文件：
 
 ```bash
-cd DouyinLiveRecorder
+docker compose -f docker-compose.webui.yaml pull
+docker compose -f docker-compose.webui.yaml up -d
 ```
 
-> [!TIP]
-> - 不论你是否已安装 **Python>=3.10** 环境, 都推荐使用 [**uv**](https://github.com/astral-sh/uv) 运行, 因为它可以自动管理虚拟环境和方便地管理 **Python** 版本, **不过这完全是可选的**<br />
-> 使用以下命令安装
->    ```bash
->    # 在 macOS 和 Linux 上安装 uv
->    curl -LsSf https://astral.sh/uv/install.sh | sh
->    ```
->    ```powershell
->    # 在 Windows 上安装 uv
->    powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
->    ```
-> - 如果安装依赖速度太慢, 你可以考虑使用国内 pip 镜像源:<br />
-> 在 `pip` 命令使用 `-i` 参数指定, 如 `pip3 install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple`<br />
-> 或者在 `uv` 命令 `--index` 选项指定, 如 `uv sync --index https://pypi.tuna.tsinghua.edu.cn/simple`
+默认访问地址：
 
-<details>
+```text
+http://<服务器或 NAS 的 IP>:8642
+```
 
-  <summary>如果已安装 <b>Python>=3.10</b> 环境</summary>
+首次打开会进入“创建管理员”页面，用户名至少 3 位，密码至少 10 位且必须同时包含字母和数字。
 
-  - :white_check_mark: 在虚拟环境中安装 (推荐)
-  
-    1. 创建虚拟环境
-
-       - 使用系统已安装的 Python, 不使用 uv
-  
-         ```bash
-         python -m venv .venv
-         ```
-
-       - 使用 uv, 默认使用系统 Python, 你可以添加 `--python` 选项指定 Python 版本而不使用系统 Python [uv官方文档](https://docs.astral.sh/uv/concepts/python-versions/)
-       
-         ```bash
-         uv venv
-         ```
-    
-    2. 在终端激活虚拟环境 (在未安装 uv 或你想要手动激活虚拟环境时执行, 若已安装 uv, 可以跳过这一步, uv 会自动激活并使用虚拟环境)
-   
-       **Bash** 中
-       ```bash
-       source .venv/Scripts/activate
-       ```
-
-       **Powershell** 中
-       ```powershell
-       .venv\Scripts\activate.ps1
-       ```
-       
-       **Windows CMD** 中
-       ```bat
-       .venv\Scripts\activate.bat
-       ```
-
-    3. 安装依赖
-   
-       ```bash
-       # 使用 pip (若安装太慢或失败, 可使用 `-i` 指定镜像源)
-       pip3 install -U pip && pip3 install -r requirements.txt
-       # 或者使用 uv (可使用 `--index` 指定镜像源)
-       uv sync
-       # 或者
-       uv pip sync requirements.txt
-       ```
-
-  - :x: 在系统 Python 环境中安装 (不推荐)
-  
-    ```bash
-    pip3 install -U pip && pip3 install -r requirements.txt
-    ```
-
-</details>
-
-<details>
-
-  <summary>如果未安装 <b>Python>=3.10</b> 环境</summary>
-
-  你可以使用 [**uv**](https://github.com/astral-sh/uv) 安装依赖
-   
-  ```bash
-  # uv 将使用 3.10 及以上的最新 python 发行版自动创建并使用虚拟环境, 可使用 --python 选项指定 python 版本, 参见 https://docs.astral.sh/uv/reference/cli/#uv-sync--python 和 https://docs.astral.sh/uv/reference/cli/#uv-pip-sync--python
-  uv sync
-  # 或
-  uv pip sync requirements.txt
-  ```
-
-</details>
-
-3.安装[FFmpeg](https://ffmpeg.org/download.html#build-linux)，如果是Windows系统，这一步可跳过。对于Linux系统，执行以下命令安装
-
-CentOS执行
+如需修改宿主机端口：
 
 ```bash
-yum install epel-release
-yum install ffmpeg
+DLR_PORT=9000 docker compose -f docker-compose.webui.yaml up -d
 ```
 
-Ubuntu则执行
+### 方式二：本地 Python 运行
+
+前置要求：
+
+- Python 3.11+
+- FFmpeg 与 ffprobe
+- Node.js 20+（仅前端开发/构建需要）
 
 ```bash
-apt update
-apt install ffmpeg
+python3.11 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt -r webui/requirements.txt
+python run_webui.py --no-browser
 ```
 
-macOS 执行
-
-**如果已经安装 Homebrew 请跳过这一步**
+默认访问 `http://127.0.0.1:8642`。确认 FFmpeg 可用：
 
 ```bash
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+ffmpeg -version
+ffprobe -version
 ```
+
+如果使用项目目录内的 FFmpeg，请放到 `ffmpeg/ffmpeg`（Windows 为 `ffmpeg/ffmpeg.exe`）。
+
+如果从源码运行且之前没有构建过前端，需要先生成静态文件：
 
 ```bash
-brew install ffmpeg
+cd webui/frontend
+npm install
+npm run build
 ```
 
-4.运行程序
+## 使用说明
 
-```python
-python main.py
+### 1. 初始化与登录
 
-```
-或
+首次访问会要求创建管理员。创建完成后自动登录。所有页面都需要登录，未登录会跳转到 `/login`。
+
+### 2. 顶部录制控制
+
+录制控制已从录制状态页迁移到顶部导航，任意页面都可以使用：
+
+- 状态按钮显示“已停止 / 启动中 / 运行中 / 停止中 / 异常”；
+- 有直播间在录制时显示 `REC N` 计数；
+- 点击后展开录制控制面板，可启动录制、优雅停止、强制停止、重启引擎；
+- 停止和重启在面板内二次确认，不会误触；
+- 桌面端和手机端使用同一套控制逻辑。
+
+### 3. 录制状态
+
+“录制状态”页展示摘要卡、正在录制的直播间和等待开播列表。启动录制后，开播的直播间会自动出现在“正在录制”区域。
+
+### 4. 直播间管理
+
+- 新增：选择平台，填写平台 ID 或完整链接；
+- 编辑：修改平台、地址、画质、自定义主播名、启用状态；
+- 停用：正在录制的房间会先优雅收尾并转 MP4；
+- 导入/导出：兼容上游 `URL_config.ini`；
+- 从录制卡片跳转：自动定位到对应主播行，保留正常分页列表。
+
+### 5. 录制文件
+
+- 左侧选择主播，右侧查看文件；
+- 点击“播放”打开弹窗，或使用“在新标签打开”；
+- 在新标签打开后，当前弹窗会自动关闭；
+- TS 文件可点击“转为 MP4”，批量勾选后可批量转码；
+- 右键文件或主播可删除，删除前会二次确认。
+
+### 6. 系统配置
+
+四个分类标签：
+
+- 录制设置：保存路径、格式、画质、分段、转码、代理、并发、磁盘阈值、自定义脚本；
+- 推送配置：微信、钉钉、邮箱、TG、BARK、NTFY、PUSHPLUS 与推送文案；
+- 账号与授权：各平台账号、Token、partner\_code；
+- Cookie 管理：按平台维护 Cookie。
+
+保存后根据配置类型提示生效方式；需要重启的配置会显示提示。
+
+## 配置项
+
+### 环境变量
+
+| 变量                    | 默认值             | 说明                                 |
+| --------------------- | --------------- | ---------------------------------- |
+| `DLR_PORT`            | `8642`          | Web 服务端口                           |
+| `DLR_HOST`            | `0.0.0.0`       | 监听地址                               |
+| `DLR_DATA_DIR`        | `./data`        | SQLite、密钥、备份目录                     |
+| `DLR_CONFIG_DIR`      | `./config`      | `config.ini` / `URL_config.ini` 目录 |
+| `DLR_DOWNLOAD_DIR`    | `./downloads`   | 录制文件目录                             |
+| `DLR_LOG_DIR`         | `./logs`        | 日志目录                               |
+| `DLR_SECRET_KEY`      | 自动生成            | 会话密钥；未设置时写入 `data/secret.key`      |
+| `DLR_LOG_LEVEL`       | `info`          | 日志级别                               |
+| `DLR_DISABLE_WORKERS` | 未设置             | 设为 `1` 时只启动 Web，不启动录制/转码 Worker    |
+| `PUID` / `PGID`       | `1000`          | Docker 运行用户与目录属主                   |
+| `TZ`                  | `Asia/Shanghai` | 容器时区                               |
+
+### 目录与持久化
+
+| 容器路径             | 用途           | 建议    |
+| ---------------- | ------------ | ----- |
+| `/app/data`      | SQLite、密钥、备份 | 必须持久化 |
+| `/app/config`    | 生成的 ini 与备份  | 建议持久化 |
+| `/app/downloads` | 录制文件         | 必须持久化 |
+| `/app/logs`      | 运行日志         | 建议持久化 |
+
+## Docker 部署
+
+### NAS 部署
+
+1. 在 NAS 的 Docker 中拉取 `misrivers/dlr-webui:latest`；
+2. 将 `docker-compose.webui.yaml` 上传到 NAS；
+3. 按 NAS 的用户 ID 设置 `PUID` / `PGID`；
+4. 修改端口映射（如需要）；
+5. 启动容器，浏览器访问 `http://NAS_IP:8642`。
+
+如果使用命令行：
 
 ```bash
-uv run main.py
+docker compose -f docker-compose.webui.yaml pull
+docker compose -f docker-compose.webui.yaml up -d
 ```
 
-其中Linux系统请使用`python3 main.py` 运行。
+### Docker Compose 部署
 
-&emsp;
-## 🐋容器运行
+仓库提供了 [docker-compose.webui.yaml](docker-compose.webui.yaml)，可以直接用于 NAS、服务器或本地 Docker。示例内容如下：
 
-在运行命令之前，请确保您的机器上安装了 [Docker](https://docs.docker.com/get-docker/) 和 [Docker Compose](https://docs.docker.com/compose/install/) 
+```yaml
+services:
+  dlr-webui:
+    image: misrivers/dlr-webui:latest
+    container_name: dlr-webui
+    init: true
+    ports:
+      - "8642:8642"
+    environment:
+      TZ: "Asia/Shanghai"
+      DLR_PORT: "8642"
+      DLR_LOG_LEVEL: "info"
+      PUID: "1000"
+      PGID: "1000"
+    volumes:
+      - ./config:/app/config
+      - ./downloads:/app/downloads
+      - ./data:/app/data
+      - ./logs:/app/logs
+    restart: unless-stopped
+    stop_grace_period: 60s
+```
 
-1.快速启动
-
-最简单方法是运行项目中的 [docker-compose.yaml](https://github.com/ihmily/DouyinLiveRecorder/blob/main/docker-compose.yaml) 文件，只需简单执行以下命令：
+启动：
 
 ```bash
-docker-compose up
+docker compose -f docker-compose.webui.yaml pull
+docker compose -f docker-compose.webui.yaml up -d
 ```
 
-可选 `-d` 在后台运行。
-
-
-
-2.构建镜像(可选)
-
-如果你只想简单的运行程序，则不需要做这一步。Docker镜像仓库中代码版本可能不是最新的，如果要运行本仓库主分支最新代码，可以本地自定义构建，通过修改 [docker-compose.yaml](https://github.com/ihmily/DouyinLiveRecorder/blob/main/docker-compose.yaml) 文件，如将镜像名修改为 `douyin-live-recorder:latest`，并取消 `# build: .` 注释，然后再执行
+查看日志：
 
 ```bash
-docker build -t douyin-live-recorder:latest .
-docker-compose up
+docker compose -f docker-compose.webui.yaml logs -f dlr-webui
 ```
 
-或者直接使用下面命令进行构建并启动
+更新到最新镜像：
 
 ```bash
-docker-compose -f docker-compose.yaml up
+docker compose -f docker-compose.webui.yaml pull
+docker compose -f docker-compose.webui.yaml up -d
 ```
 
-
-
-3.停止容器实例
+停止容器：
 
 ```bash
-docker-compose stop
+docker compose -f docker-compose.webui.yaml down
 ```
 
+部署要点：
 
+- `8642` 是容器内固定端口，左侧是宿主机端口，可以按需修改；
+- `PUID` / `PGID` 应与宿主机 `data`、`config`、`downloads`、`logs` 目录的属主一致；
+- `data`、`config`、`downloads`、`logs` 必须挂载到宿主机，否则重建容器会丢失数据；
+- 首次访问会进入管理员初始化页面；
+- 镜像内已包含 FFmpeg，健康检查访问 `/api/system/health`；
+- 不需要在 NAS 上登录 Docker Hub，镜像为公开镜像。
 
-4.注意事项
+## Windows EXE
 
-①在docker容器内运行本程序之前，请先在配置文件中添加要录制的直播间地址。
+Windows 免安装 EXE 版本正在准备中，当前请优先使用 Docker 或源码运行。后续发布 EXE 时会提供下载地址和使用说明。
 
-②在容器内时，如果手动中断容器运行停止录制，会导致正在录制的视频文件损坏！
+EXE 版本计划不内置 FFmpeg，需要自行将 `ffmpeg.exe` 与 `ffprobe.exe` 放入程序目录的 `ffmpeg/` 文件夹。首次运行会在程序目录生成 `data/`、`config/`、`downloads/`、`logs/`，关闭窗口时可以选择后台继续运行或退出程序。
 
-**无论哪种运行方式，为避免手动中断或者异常中断导致录制的视频文件损坏的情况，推荐使用 `ts` 格式保存**。
+## 数据与安全
 
-&emsp;
+- 所有数据默认保存在本机，不依赖云服务；
+- SQLite 中可能保存平台 Cookie、Token、账号等敏感信息；
+- `config/config.ini` 可能包含明文敏感配置，请勿提交到 Git 或上传到公共位置；
+- Docker 镜像构建已排除整个 `config/` 目录，镜像内不会包含本机 Cookie/Token；
+- 首次部署请立即修改管理员密码；
+- 如需暴露到公网，请使用 HTTPS 反向代理，并限制访问来源；
+- 定期备份 `data/` 与 `config/`；
+- 录制内容可能涉及版权与平台规则，请自行确认授权范围。
 
-## 🤖相关项目
+## 常见问题
 
-- StreamCap: https://github.com/ihmily/StreamCap
-- streamget: https://github.com/ihmily/streamget
+### 页面打不开
 
-&emsp;
+- 确认容器或进程已启动；
+- 检查 8642 端口是否被占用；
+- NAS 上确认端口映射和防火墙；
+- 查看 `logs/webui.log`。
 
-## ❤️贡献者
+### 提示未找到 ffmpeg
 
-&ensp;&ensp; [![Hmily](https://github.com/ihmily.png?size=50)](https://github.com/ihmily)
-[![iridescentGray](https://github.com/iridescentGray.png?size=50)](https://github.com/iridescentGray)
-[![annidy](https://github.com/annidy.png?size=50)](https://github.com/annidy)
-[![wwkk2580](https://github.com/wwkk2580.png?size=50)](https://github.com/wwkk2580)
-[![missuo](https://github.com/missuo.png?size=50)](https://github.com/missuo)
-<a href="https://github.com/xueli12" target="_blank"><img src="https://github.com/xueli12.png?size=50" alt="xueli12" style="width:53px; height:51px;" /></a>
-<a href="https://github.com/kaine1973" target="_blank"><img src="https://github.com/kaine1973.png?size=50" alt="kaine1973" style="width:53px; height:51px;" /></a>
-<a href="https://github.com/yinruiqing" target="_blank"><img src="https://github.com/yinruiqing.png?size=50" alt="yinruiqing" style="width:53px; height:51px;" /></a>
-<a href="https://github.com/Max-Tortoise" target="_blank"><img src="https://github.com/Max-Tortoise.png?size=50" alt="Max-Tortoise" style="width:53px; height:51px;" /></a>
-[![justdoiting](https://github.com/justdoiting.png?size=50)](https://github.com/justdoiting)
-[![dhbxs](https://github.com/dhbxs.png?size=50)](https://github.com/dhbxs)
-[![wujiyu115](https://github.com/wujiyu115.png?size=50)](https://github.com/wujiyu115)
-[![zhanghao333](https://github.com/zhanghao333.png?size=50)](https://github.com/zhanghao333)
-<a href="https://github.com/gyc0123" target="_blank"><img src="https://github.com/gyc0123.png?size=50" alt="gyc0123" style="width:53px; height:51px;" /></a>
+- Docker 镜像已内置 FFmpeg；
+- 源码运行请安装 FFmpeg，或把二进制放到 `ffmpeg/`；
+- 确认当前用户对 FFmpeg 有执行权限。
 
-&ensp;&ensp; [![HoratioShaw](https://github.com/HoratioShaw.png?size=50)](https://github.com/HoratioShaw)
-[![nov30th](https://github.com/nov30th.png?size=50)](https://github.com/nov30th)
-[![727155455](https://github.com/727155455.png?size=50)](https://github.com/727155455)
-[![nixingshiguang](https://github.com/nixingshiguang.png?size=50)](https://github.com/nixingshiguang)
-[![1411430556](https://github.com/1411430556.png?size=50)](https://github.com/1411430556)
-[![Ovear](https://github.com/Ovear.png?size=50)](https://github.com/Ovear)
-&emsp;
+### 录制文件没有出现
 
-## ⏳提交日志
+- 检查设置中的保存路径；
+- 在录制文件页点击“重新扫描目录”；
+- 确认录制 Worker 正在运行；
+- 检查磁盘剩余空间与目录权限。
 
-- 20251024
-  - 修复抖音风控无法获取数据问题
-  
-  - 新增soop.com录制支持
-  
-  - 修复bigo录制
-  
-- 20250127
-  - 新增淘宝、京东、faceit直播录制
-  - 修复小红书直播流录制以及转码问题
-  - 修复畅聊、VV星球、flexTV直播录制
-  - 修复批量微信直播推送
-  - 新增email发送ssl和port配置
-  - 新增强制转h264配置
-  - 更新ffmpeg版本
-  - 重构包为异步函数！
+### 手机端输入时页面放大
 
-- 20241130
-  - 新增shopee、youtube直播录制
-  - 新增支持自定义m3u8、flv地址录制
-  - 新增自定义执行脚本，支持python、bat、bash等
-  - 修复YY直播、花椒直播和小红书直播录制
-  - 修复b站标题获取错误
-  - 修复log日志错误
-- 20241030
-  - 新增嗨秀直播、vv星球直播、17Live、浪Live、SOOP、畅聊直播(原时光直播)、飘飘直播、六间房直播、乐嗨直播、花猫直播等10个平台直播录制
-  - 修复小红书直播录制，支持小红书作者主页地址录制直播
-  - 新增支持ntfy消息推送，以及新增支持批量推送多个地址（逗号分隔多个推送地址)
-  - 修复Liveme直播录制、twitch直播录制
-  - 新增Windows平台一键停止录制VB脚本程序
-- 20241005
-  - 新增邮箱和Bark推送
-  - 新增直播注释停止录制
-  - 优化分段录制
-  - 重构部分代码
-- 20240928
-  - 新增知乎直播、CHZZK直播录制
-  - 修复音播直播录制
-- 20240903
-  - 新增抖音双屏录制、音播直播录制
-  - 修复PandaTV、bigo直播录制
-- 20240713
-  - 新增映客直播录制
-- 20240705
-  - 新增时光直播录制
-- 20240701
-  - 修复虎牙直播录制2分钟断流问题
-  - 新增自定义直播推送内容
-- 20240621
-  - 新增Acfun、ShowRoom直播录制
-  - 修复微博录制、新增直播源线路
-  - 修复斗鱼直播60帧录制
-  - 修复酷狗直播录制
-  - 修复TikTok部分无法解析直播源
-  - 修复抖音无法录制连麦直播
-- 20240510
-  - 修复部分虎牙直播间录制错误
-- 20240508
-  - 修复花椒直播录制
-  - 更改文件路径解析方式 [@kaine1973](https://github.com/kaine1973)
-- 20240506
-  - 修复抖音录制画质解析bug
-  - 修复虎牙录制 60帧最高画质问题
-  - 新增流星直播录制
-- 20240427
-  - 新增LiveMe、花椒直播录制
-- 20240425
-  - 新增TwitchTV直播录制
-- 20240424
-  - 新增酷狗直播录制、优化PopkonTV直播录制
-- 20240423
-  - 新增百度直播录制、微博直播录制
-  - 修复斗鱼录制直播回放的问题
-  - 新增直播源地址显示以及输出到日志文件设置
-- 20240311
-  - 修复海外平台录制bug，增加画质选择，增强录制稳定性
-  - 修复虎牙录制bug (虎牙`一起看`频道 有特殊限制，有时无法录制)
-- 20240309
-  - 修复虎牙直播、小红书直播和B站直播录制
-  - 新增5个直播平台录制，包括winktv、flextv、look、popkontv、twitcasting
-  - 新增部分海外平台账号密码配置，实现自动登录并更新配置文件中的cookie
-  - 新增自定义配置需要使用代理录制的平台
-  - 新增只推送开播消息不进行录制设置
-  - 修复了一些bug
-- 20240209
-  - 优化AfreecaTV录制，新增账号密码登录获取cookie以及持久保存
-  - 修复了小红书直播因官方更新直播域名，导致无法录制直播的问题
-  - 修复了更新URL配置文件的bug
-  - 最后，祝大家新年快乐！
+- 项目已设置移动端 viewport 禁止缩放；
+- 移动端输入框使用 16px 字号，避免 iOS Safari 聚焦时自动放大；
+- 如果仍然放大，请检查浏览器是否强制开启了“缩放”或“无障碍字号”。
 
-<details><summary>点击展开更多提交日志</summary>
+### WebSocket 显示轮询
 
-- 20240129
-  - 新增猫耳FM直播录制
-- 20240127
-  - 新增千度热播直播录制、新增pandaTV(韩国)直播录制
-  - 新增telegram直播状态消息推送，修复了某些bug
-  - 新增自定义设置不同直播间的录制画质(即每个直播间录制画质可不同)
-  - 修改录制视频保存路径为 `downloads` 文件夹，并且分平台进行保存。
-- 20240114
-  - 新增网易cc直播录制，优化ffmpeg参数，修改AfreecaTV输入直播地址格式
-  - 修改日志记录器 @[iridescentGray](https://github.com/iridescentGray)
-- 20240102
-  - 修复Linux上运行，新增docker配置文件
-- 20231210
-  - 修复录制分段bug，修复bigo录制检测bug
-  - 新增自定义修改录制主播名
-  - 新增AfreecaTV直播录制，修复某些可能会发生的bug
-- 20231207
-  - 新增blued直播录制，修复YY直播录制，新增直播结束消息推送
-- 20231206
-  - 新增bigo直播录制
-- 20231203
-  - 新增小红书直播录制（全网首发），目前小红书官方没有切换清晰度功能，因此直播录制也只有默认画质
-  - 小红书录制暂时无法循环监测，每次主播开启直播，都要重新获取一次链接
-  - 获取链接的方式为 将直播间转发到微信，在微信中打开后，复制页面的链接。
-- 20231030
-  - 本次更新只是进行修复，没时间新增功能。
-  - 欢迎各位大佬提pr 帮忙更新维护
-- 20230930
-  - 新增抖音从接口获取直播流，增强稳定性
-  - 修改快手获取直播流的方式，改用从官方接口获取
-  - 祝大家中秋节快乐！
-- 20230919
-  - 修复了快手版本更新后录制出错的问题，增加了其自动获取cookie(~~稳定性未知~~)
-  - 修复了TikTok显示正在直播但不进行录制的问题
-- 20230907
-  - 修复了因抖音官方更新了版本导致的录制出错以及短链接转换出错
-  - 修复B站无法录制原画视频的bug
-  - 修改了配置文件字段，新增各平台自定义设置Cookie
-- 20230903
-  - 修复了TikTok录制时报644无法录制的问题
-  - 新增直播状态推送到钉钉和微信的功能，如有需要请看 [设置推送教程](https://d04vqdiqwr3.feishu.cn/docx/XFPwdDDvfobbzlxhmMYcvouynDh?from=from_copylink)
-  - 最近比较忙，其他问题有时间再更新
-- 20230816
-  - 修复斗鱼直播（官方更新了字段）和快手直播录制出错的问题
-- 20230814
-  - 新增B站直播录制
-  - 写了一个在线播放M3U8和FLV视频的网页源码，打开即可食用
-- 20230812
-  - 新增YY直播录制
-- 20230808
-  - 修复主播重新开播无法再次录制的问题
-- 20230807
-  - 新增了斗鱼直播录制
-  - 修复显示录制完成之后会重新开始录制的问题
-- 20230805
-  - 新增了虎牙直播录制，其暂时只能用flv视频流进行录制
-  - Web API 新增了快手和虎牙这两个平台的直播流解析（TikTok要代理）
-- 20230804
-  - 新增了快手直播录制，优化了部分代码
-  - 上传了一个自动化获取抖音直播间页面Cookie的代码，可以用于录制
-- 20230803
-  - 通宵更新 
-  - 新增了国际版抖音TikTok的直播录制，去除冗余 简化了部分代码
-- 20230724	
-  - 新增了一个通过抖音直播间地址获取直播视频流链接的API接口，上传即可用
-  </details>
-  &emsp;
+- 反向代理需要转发 WebSocket；
+- 检查 `/api/ws/events` 是否可达；
+- 页面会自动回退到轮询，不影响基本使用。
 
-## 有问题可以提issue, 我会在这里持续添加更多直播平台的录制 欢迎Star
-#### 
+### 容器权限问题
+
+- 设置 `PUID` / `PGID` 与宿主机目录属主一致；
+- 确认 `data`、`config`、`downloads`、`logs` 可写；
+- 初次启动会对挂载目录执行属主修正，大目录可能耗时。
+
+## 路线图
+
+- [x] Web 管理端与手机端自适应
+- [x] SQLite 数据层与上游 ini 兼容
+- [x] 录制/转码 Worker 分离
+- [x] 多架构 Docker 镜像与 NAS 部署
+- [x] 全局录制控制
+- [ ] Windows 免安装 EXE 正式发布
+- [ ] 更多平台适配与平台健康检查
+- [ ] 录制计划、定时任务与通知模板
+- [ ] 多用户与更细的权限控制
+- [ ] 对象存储/网盘归档
+
+## 上游与许可
+
+本项目基于 [ihmily/DouyinLiveRecorder](https://github.com/ihmily/DouyinLiveRecorder) 改造，保留其平台解析、录制与 FFmpeg 相关能力。上游项目采用 MIT License，Copyright (c) 2025 Hmily。
+
+本仓库新增的 Web UI、后端管理、Docker 与文档代码同样遵循 MIT License，详见 [LICENSE](LICENSE)。
+
+再次提醒：请勿将本项目用于侵犯版权、绕过平台限制或违反当地法律法规的用途。项目按“现状”提供，不提供任何明示或暗示担保。

@@ -1,0 +1,61 @@
+name: Build Web UI Packages
+
+on:
+  workflow_dispatch:
+
+jobs:
+  windows-exe:
+    name: Windows EXE (without FFmpeg)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt -r webui/requirements.txt pyinstaller
+
+      - name: Build one-folder exe
+        run: python webui/build_exe.py
+
+      - name: Prepare external ffmpeg directory
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist/DouyinLiveRecorderUI/ffmpeg | Out-Null
+          Set-Content -Encoding UTF8 dist/DouyinLiveRecorderUI/ffmpeg/放置ffmpeg.txt "请将 ffmpeg.exe 和 ffprobe.exe 放到本目录。"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DouyinLiveRecorderUI-windows
+          path: dist/DouyinLiveRecorderUI
+          if-no-files-found: error
+
+  docker-image:
+    name: Docker image (with FFmpeg)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: webui/Dockerfile
+          push: false
+          tags: dlr-webui:ci

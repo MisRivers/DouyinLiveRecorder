@@ -1,0 +1,31 @@
+# Web UI 版 Docker 部署（多架构镜像，amd64/arm64 自动匹配）
+# 拉取并启动：docker compose -f docker-compose.webui.yaml pull
+#             docker compose -f docker-compose.webui.yaml up -d
+# 默认端口 8642；如需改宿主机端口：DLR_PORT=9000 docker compose -f docker-compose.webui.yaml up -d
+services:
+  dlr-webui:
+    image: misrivers/dlr-webui:latest
+    container_name: dlr-webui
+    init: true
+    ports:
+      # 宿主机端口:容器端口（容器内固定 8642）
+      - "${DLR_PORT:-8642}:8642"
+    environment:
+      TZ: "${TZ:-Asia/Shanghai}"
+      DLR_PORT: "8642"
+      DLR_LOG_LEVEL: "${DLR_LOG_LEVEL:-info}"
+      # 宿主机目录权限；Linux 下建议设为当前用户 id -u / id -g
+      PUID: "${PUID:-1000}"
+      PGID: "${PGID:-1000}"
+    volumes:
+      # 配置目录：config.ini / URL_config.ini
+      - ./config:/app/config
+      # 录像保存目录
+      - ./downloads:/app/downloads
+      # 数据库、密钥、备份
+      - ./data:/app/data
+      # 运行日志
+      - ./logs:/app/logs
+    restart: unless-stopped
+    # 留出录制收尾与 TS 转 MP4 的时间
+    stop_grace_period: 60s
