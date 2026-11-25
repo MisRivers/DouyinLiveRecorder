@@ -1,0 +1,252 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: "beta or stable"
+        type: choice
+        options: [beta, release]
+        default: beta
+      target:
+        description: "docker, windows or both"
+        type: choice
+        options: [docker, windows, both]
+        default: both
+      bump:
+        description: "stable version bump"
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+      version:
+        description: "explicit version (leave empty for auto numbering)"
+        type: string
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ inputs.channel }}-${{ inputs.target }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Resolve version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      base: ${{ steps.version.outputs.base }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Compute version
+        id: version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CHANNEL: ${{ inputs.channel }}
+          BUMP: ${{ inputs.bump }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          args=(--channel "$CHANNEL" --bump "$BUMP")
+          if [ -n "$VERSION" ]; then args+=(--version "$VERSION"); fi
+          python scripts/version_bump.py "${args[@]}"
+
+  docker:
+    name: Docker image
+    needs: prepare
+    if: inputs.target != 'windows'
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      BASE: ${{ needs.prepare.outputs.base }}
+      CHANNEL: ${{ inputs.channel }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN || secrets.DOCKERHUB_PASSWORD }}
+      - name: Image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: misrivers/dlr-webui
+          tags: |
+            type=raw,value=${{ needs.prepare.outputs.version }}
+            type=raw,value=beta,enable=${{ inputs.channel == 'beta' }}
+            type=raw,value=latest,enable=${{ inputs.channel == 'release' }}
+            type=sha,prefix=sha-
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./webui/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            APP_VERSION=${{ needs.prepare.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: true
+          sbom: false
+      - name: Verify published image
+        run: |
+          set -e
+          mkdir -p "$RUNNER_TEMP/dlr/config" "$RUNNER_TEMP/dlr/downloads" \
+                   "$RUNNER_TEMP/dlr/data" "$RUNNER_TEMP/dlr/logs"
+          docker pull --platform linux/amd64 misrivers/dlr-webui@${{ steps.build.outputs.digest }}
+          docker run --rm --platform linux/amd64 misrivers/dlr-webui@${{ steps.build.outputs.digest }} cat /app/VERSION
+          docker run -d --name dlr-ci --platform linux/amd64 -p 18642:8642 \
+            -e DLR_DISABLE_WORKERS=1 \
+            -v "$RUNNER_TEMP/dlr/config:/app/config" \
+            -v "$RUNNER_TEMP/dlr/downloads:/app/downloads" \
+            -v "$RUNNER_TEMP/dlr/data:/app/data" \
+            -v "$RUNNER_TEMP/dlr/logs:/app/logs" \
+            misrivers/dlr-webui@${{ steps.build.outputs.digest }}
+          for attempt in $(seq 1 30); do
+            code=$(curl -s -o health.json -w '%{http_code}' \
+              http://127.0.0.1:18642/api/system/health || true)
+            if [ "$code" = "200" ]; then cat health.json; exit 0; fi
+            sleep 2
+          done
+          docker logs dlr-ci
+          exit 1
+      - name: Cleanup container
+        if: always()
+        run: docker rm -f dlr-ci || true
+      - name: Attach Docker info to stable release
+        if: inputs.channel == 'release'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAGS="$(printf '%s' '${{ steps.meta.outputs.tags }}' | tr '\n' ',')"
+          python3 scripts/release_sync.py \
+            --channel stable \
+            --version "$VERSION" \
+            --base "$BASE" \
+            --digest "${{ steps.build.outputs.digest }}" \
+            --tags "$TAGS" \
+            --commit "$GITHUB_SHA"
+
+  windows:
+    name: Windows EXE
+    needs: prepare
+    if: inputs.target != 'docker'
+    runs-on: windows-latest
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      BASE: ${{ needs.prepare.outputs.base }}
+      CHANNEL: ${{ inputs.channel }}
+      RELEASE_CHANNEL: ${{ inputs.channel }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            webui/requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: webui/frontend/package-lock.json
+      - name: Check build content standard
+        run: python scripts/check_build_files.py
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt -r webui/requirements.txt pyinstaller
+      - name: Build one-folder exe
+        run: python webui/build_exe.py --version "$env:VERSION"
+      - name: Self test EXE
+        shell: pwsh
+        run: |
+          $smoke = Join-Path $env:RUNNER_TEMP "dlr-self-test"
+          New-Item -ItemType Directory -Force -Path $smoke | Out-Null
+          $env:DLR_DATA_DIR = Join-Path $smoke "data"
+          $env:DLR_CONFIG_DIR = Join-Path $smoke "config"
+          $env:DLR_DOWNLOAD_DIR = Join-Path $smoke "downloads"
+          $env:DLR_LOG_DIR = Join-Path $smoke "logs"
+          $process = Start-Process -FilePath "dist/DouyinLiveRecorderUI/DouyinLiveRecorderUI.exe" -ArgumentList "--self-test" -WorkingDirectory "dist/DouyinLiveRecorderUI" -PassThru -Wait
+          if ($process.ExitCode -ne 0) { throw "EXE self-test failed" }
+          Remove-Item -Recurse -Force $smoke -ErrorAction SilentlyContinue
+      - name: Smoke test EXE (headless)
+        shell: pwsh
+        run: |
+          $env:DLR_PORT = "18642"
+          $env:DLR_DISABLE_WORKERS = "1"
+          $smoke = Join-Path $env:RUNNER_TEMP "dlr-smoke"
+          New-Item -ItemType Directory -Force -Path $smoke | Out-Null
+          $env:DLR_DATA_DIR = Join-Path $smoke "data"
+          $env:DLR_CONFIG_DIR = Join-Path $smoke "config"
+          $env:DLR_DOWNLOAD_DIR = Join-Path $smoke "downloads"
+          $env:DLR_LOG_DIR = Join-Path $smoke "logs"
+          $exe = "dist/DouyinLiveRecorderUI/DouyinLiveRecorderUI.exe"
+          $process = Start-Process -FilePath $exe -ArgumentList "--headless" -WorkingDirectory "dist/DouyinLiveRecorderUI" -PassThru -WindowStyle Hidden
+          try {
+            $ok = $false
+            for ($i = 0; $i -lt 20; $i++) {
+              Start-Sleep -Seconds 1
+              try {
+                $response = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:18642/api/system/health" -TimeoutSec 2
+                if ($response.StatusCode -eq 200) { $ok = $true; break }
+              } catch {}
+            }
+            if (-not $ok) { throw "EXE health check failed" }
+          } finally {
+            if ($process) { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue }
+          }
+          Remove-Item -Recurse -Force $smoke -ErrorAction SilentlyContinue
+      - name: Verify artifact content
+        shell: pwsh
+        run: |
+          $dist = "dist/DouyinLiveRecorderUI"
+          foreach ($name in @("config", "data", "downloads", "logs")) {
+            if (Test-Path (Join-Path $dist $name)) { throw "runtime directory leaked into artifact: $name" }
+          }
+          $baked = (Get-Content (Join-Path $dist "VERSION") -Raw).Trim()
+          if ($baked -ne $env:VERSION) { throw "baked version mismatch: $baked != $env:VERSION" }
+          New-Item -ItemType Directory -Force "$dist/ffmpeg" | Out-Null
+          Set-Content -Encoding UTF8 "$dist/ffmpeg/放置ffmpeg.txt" "请将 ffmpeg.exe 和 ffprobe.exe 放到本目录，或首次运行时自动下载。"
+      - name: Create Windows zip
+        shell: pwsh
+        run: |
+          $zip = "DouyinLiveRecorderUI-$env:VERSION-windows-x64.zip"
+          Compress-Archive -Path "dist/DouyinLiveRecorderUI/*" -DestinationPath $zip -Force
+          Get-FileHash $zip -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  $zip" } | Set-Content -Encoding ASCII sha256sums.txt
+          Get-ChildItem $zip, sha256sums.txt | Format-Table Name, Length
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DouyinLiveRecorderUI-${{ needs.prepare.outputs.version }}-windows-x64
+          path: |
+            DouyinLiveRecorderUI-${{ needs.prepare.outputs.version }}-windows-x64.zip
+            sha256sums.txt
+          if-no-files-found: error
+      - name: Attach Windows asset to stable release
+        if: inputs.channel == 'release'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python scripts/release_sync.py --channel stable --version "$env:VERSION" --base "$env:BASE" --zip "DouyinLiveRecorderUI-$env:VERSION-windows-x64.zip" --commit "$env:GITHUB_SHA"
+      - name: Upload beta pre-release assets
+        if: inputs.channel == 'beta'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python scripts/release_sync.py --channel beta --version "$env:VERSION" --base "$env:BASE" --zip "DouyinLiveRecorderUI-$env:VERSION-windows-x64.zip" --commit "$env:GITHUB_SHA"
