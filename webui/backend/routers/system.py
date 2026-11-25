@@ -6,7 +6,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, Query, Request
 
-from .. import config, db, security
+from .. import config, db, security, version_service
 from ..responses import ok
 from ..services import files_service, recorder_control
 
@@ -38,6 +38,7 @@ def health():
 def info(request: Request, session: dict = Depends(security.require_user)):
     return ok({
         "version": db.get_meta("schema_version", "1"),
+        "app_version": version_service.current_version(),
         "upstream_version": recorder_control.upstream_version(),
         "root": str(config.ROOT_DIR),
         "data_dir": str(config.DATA_DIR),
@@ -47,6 +48,12 @@ def info(request: Request, session: dict = Depends(security.require_user)):
         "setup_completed": db.get_meta("setup_completed", "0") == "1",
         "last_scan_at": db.get_meta("last_scan_at"),
     }, request)
+
+
+@router.get("/update")
+def update(request: Request, force: bool = False,
+           session: dict = Depends(security.require_user)):
+    return ok(version_service.check(force=force), request)
 
 
 @router.get("/logs")

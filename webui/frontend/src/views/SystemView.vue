@@ -15,6 +15,9 @@ const loading = ref(true)
 const busy = ref(false)
 const password = reactive({ current: '', next: '', confirm: '' })
 const passwordError = ref('')
+const updateInfo = ref(null)
+const updateLoading = ref(false)
+const updateError = ref('')
 
 async function load() {
   loading.value = true
@@ -45,6 +48,18 @@ async function refreshLogs() {
   }
 }
 
+async function loadUpdate(force = false) {
+  updateLoading.value = true
+  updateError.value = ''
+  try {
+    updateInfo.value = await api(`/system/update${force ? '?force=1' : ''}`)
+  } catch (err) {
+    updateError.value = err.message
+  } finally {
+    updateLoading.value = false
+  }
+}
+
 async function changePassword() {
   passwordError.value = ''
   if (!password.current) { passwordError.value = '请输入当前密码'; return }
@@ -72,7 +87,10 @@ async function logout() {
   router.push('/login')
 }
 
-onMounted(load)
+onMounted(() => {
+  load()
+  loadUpdate()
+})
 </script>
 
 <template>
@@ -103,7 +121,7 @@ onMounted(load)
         </div>
         <div class="info-item">
           <div class="info-label">应用版本</div>
-          <div class="info-value">{{ info?.version }}</div>
+          <div class="info-value">v{{ info?.app_version || info?.version || '—' }}</div>
         </div>
         <div class="info-item">
           <div class="info-label">上游版本</div>
@@ -124,6 +142,53 @@ onMounted(load)
         <div class="info-item">
           <div class="info-label">最近文件扫描</div>
           <div class="info-value">{{ formatTime(info?.last_scan_at) }}</div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-header">
+          <div>
+            <div class="card-title">版本更新</div>
+            <div class="card-sub">读取 GitHub Releases 的最新版本，不会自动替换程序文件。</div>
+          </div>
+          <div style="flex:1" />
+          <button class="btn btn-sm" :disabled="updateLoading" @click="loadUpdate(true)">
+            {{ updateLoading ? '检查中…' : '检查更新' }}
+          </button>
+        </div>
+        <div class="card-body">
+          <div class="info-grid">
+            <div class="info-item">
+              <div class="info-label">当前版本</div>
+              <div class="info-value">v{{ info?.app_version || updateInfo?.current || '—' }}</div>
+            </div>
+            <div class="info-item">
+              <div class="info-label">最新版本</div>
+              <div class="info-value">{{ updateInfo?.latest ? `v${updateInfo.latest}` : '暂无发行版' }}</div>
+            </div>
+            <div class="info-item">
+              <div class="info-label">状态</div>
+              <div class="info-value" style="font-weight:500">
+                <span v-if="updateLoading">检查中…</span>
+                <span v-else-if="updateError" style="color:var(--danger)">{{ updateError }}</span>
+                <span v-else-if="updateInfo?.update_available" style="color:var(--warning)">发现新版本</span>
+                <span v-else-if="updateInfo?.latest">已是最新</span>
+                <span v-else>暂无发行版</span>
+              </div>
+            </div>
+            <div class="info-item">
+              <div class="info-label">发行版页面</div>
+              <div class="info-value">
+                <a :href="updateInfo?.release_url || 'https://github.com/MisRivers/DouyinLiveRecorder/releases'"
+                   target="_blank" rel="noopener">打开 GitHub Releases</a>
+              </div>
+            </div>
+          </div>
+          <div v-if="updateInfo?.notes" class="card-sub"
+               style="margin-top:10px;white-space:pre-wrap;max-height:120px;overflow:auto">{{ updateInfo.notes }}</div>
+          <div class="card-sub" style="margin-top:8px">
+            当前版本支持检测更新并跳转发行版下载；自动替换 EXE 将在后续版本提供。
+          </div>
         </div>
       </div>
 

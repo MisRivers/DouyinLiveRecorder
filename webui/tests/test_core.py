@@ -68,3 +68,12 @@ def test_install_ffmpeg_from_zip(tmp_path):
 
     assert (dest / "ffmpeg.exe").read_bytes()[:2] == b"MZ"
     assert (dest / "ffprobe.exe").stat().st_size >= ffmpeg_setup.MIN_BINARY_BYTES
+
+
+def test_version_compare():
+    from webui.backend import version_service
+
+    assert version_service.is_newer("v1.2.3", "1.2.2")
+    assert not version_service.is_newer("1.2.2", "1.2.2")
+    assert not version_service.is_newer(None, "1.2.2")
+    assert version_service.is_newer("v2.0", "1.9.9")

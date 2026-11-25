@@ -18,7 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import config, db
+from . import config, db, version_service
 from .errors import ApiError, api_error_handler, validation_error_handler
 from .routers import auth, automation, files, live, recorder, rooms, settings, system, ws
 from .services import files_service
@@ -141,7 +141,7 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     app = FastAPI(
         title="DouyinLiveRecorder Web UI",
-        version="1.0.0",
+        version=version_service.current_version(),
         docs_url="/api/docs",
         openapi_url="/api/openapi.json",
         lifespan=lifespan,

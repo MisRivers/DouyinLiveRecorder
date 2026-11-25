@@ -30,6 +30,7 @@ hiddenimports = (
         "webui.backend.main",
         "webui.backend.desktop_launcher",
         "webui.backend.ffmpeg_setup",
+        "webui.backend.version_service",
         "webui.backend.workers.recorder_worker",
         "webui.backend.workers.converter_worker",
         "tkinter",

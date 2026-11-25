@@ -21,6 +21,7 @@ Docker 镜像：`misrivers/dlr-webui:latest`，支持 `linux/amd64` 与 `linux/a
 - [配置项](#配置项)
 - [Docker 部署](#docker-部署)
 - [Windows EXE](#windows-exe)
+- [版本更新](#版本更新)
 - [安全加固建议](#安全加固建议)
 - [数据、隐私与内容管理](#数据隐私与内容管理)
 - [常见问题](#常见问题)
@@ -540,6 +541,15 @@ Windows 免安装版本由 GitHub Actions 构建，产物为 `DouyinLiveRecorder
 - 也可手动从 <https://www.gyan.dev/ffmpeg/builds/> 下载，解压后把 `bin/ffmpeg.exe` 与 `bin/ffprobe.exe` 放入程序目录的 `ffmpeg/`；
 - 已安装到系统 PATH 时不会提示；
 - EXE 不内置 FFmpeg，自动下载需要网络连接。
+
+## 版本更新
+
+- 当前应用版本定义在 [version_service.py](webui/backend/version_service.py)；
+- Windows EXE 启动后会自动检查 GitHub Releases，也可在窗口点击“检查更新”；
+- Web 端“系统信息 → 版本更新”可手动检查并查看发行版说明；
+- 检测到新版本时会提供发行版页面链接，不会自动替换程序文件；
+- 发布新版本时创建 `v1.2.3` 形式的 Git tag 与 GitHub Release，CI 会按 tag 构建镜像；EXE 产物需手动上传到对应 Release；
+- 如需提高 GitHub API 限额，可在运行环境设置 `DLR_GITHUB_TOKEN`。
 
 ## 安全加固建议
 
