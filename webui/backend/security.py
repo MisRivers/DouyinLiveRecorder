@@ -4,6 +4,7 @@ import base64
 import hashlib
 import hmac
 import secrets
+import threading
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -17,6 +18,10 @@ SCRYPT_R = 8
 SCRYPT_P = 1
 
 _login_state: dict[str, dict] = {}
+_login_lock = threading.Lock()
+_last_login_prune = 0.0
+LOGIN_STATE_MAX = 2000
+LOGIN_STATE_TTL = max(config.LOGIN_LOCK_SECONDS * 2, 1800)
 
 
 def _b64(data: bytes) -> str:
@@ -124,9 +129,13 @@ def revoke_user_sessions(user_id: int, keep_token: str | None = None) -> None:
 def client_ip(request: Request | None) -> str | None:
     if request is None:
         return None
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
+    if config.TRUST_PROXY:
+        forwarded = request.headers.get("x-forwarded-for")
+        if forwarded:
+            values = [value.strip() for value in forwarded.split(",") if value.strip()]
+            if values:
+                # 仅在明确配置可信代理时使用代理追加的最后一跳地址。
+                return values[-1]
     return request.client.host if request.client else None
 
 
@@ -153,23 +162,55 @@ def require_csrf(request: Request) -> None:
         raise ApiError(403, "FORBIDDEN", "CSRF 校验失败，请刷新页面后重试")
 
 
-def check_login_attempt(key: str) -> None:
-    state = _login_state.get(key)
-    now = time.time()
-    if not state:
+def _prune_login_state(now: float, force: bool = False) -> None:
+    global _last_login_prune
+    if not force and now - _last_login_prune < 60:
         return
-    if state.get("locked_until", 0) > now:
-        remaining = int(state["locked_until"] - now)
-        raise ApiError(423, "ACCOUNT_LOCKED", "登录失败次数过多", {"retry_after_seconds": remaining})
+    _last_login_prune = now
+    stale = [
+        key for key, state in _login_state.items()
+        if now - state.get("updated_at", 0) > LOGIN_STATE_TTL
+    ]
+    for key in stale:
+        _login_state.pop(key, None)
+    overflow = len(_login_state) - LOGIN_STATE_MAX
+    if overflow > 0:
+        oldest = sorted(
+            _login_state.items(), key=lambda item: item[1].get("updated_at", 0)
+        )[:overflow]
+        for key, _ in oldest:
+            _login_state.pop(key, None)
+
+
+def check_login_attempt(key: str) -> None:
+    now = time.time()
+    with _login_lock:
+        state = _login_state.get(key)
+        if not state:
+            return
+        locked_until = state.get("locked_until", 0)
+        if locked_until > now:
+            remaining = int(locked_until - now)
+            raise ApiError(423, "ACCOUNT_LOCKED", "登录失败次数过多",
+                           {"retry_after_seconds": remaining})
 
 
 def record_login_failure(key: str) -> None:
-    state = _login_state.setdefault(key, {"count": 0, "locked_until": 0})
-    state["count"] += 1
-    if state["count"] >= config.LOGIN_MAX_FAILURES:
-        state["locked_until"] = time.time() + config.LOGIN_LOCK_SECONDS
-        state["count"] = 0
+    now = time.time()
+    with _login_lock:
+        _prune_login_state(now, force=len(_login_state) >= LOGIN_STATE_MAX)
+        state = _login_state.setdefault(
+            key, {"count": 0, "locked_until": 0, "updated_at": now}
+        )
+        state["updated_at"] = now
+        state["count"] += 1
+        if state["count"] >= config.LOGIN_MAX_FAILURES:
+            state["locked_until"] = now + config.LOGIN_LOCK_SECONDS
+            state["count"] = 0
+        if len(_login_state) > LOGIN_STATE_MAX:
+            _prune_login_state(time.time(), force=True)
 
 
 def clear_login_failures(key: str) -> None:
-    _login_state.pop(key, None)
+    with _login_lock:
+        _login_state.pop(key, None)

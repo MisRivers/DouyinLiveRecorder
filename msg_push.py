@@ -10,16 +10,40 @@ Copyright (c) 2023-2024 by Hmily, All Rights Reserved.
 from typing import Dict, Any
 import json
 import base64
+import re
+import ssl
 import urllib.request
 import urllib.error
 import smtplib
+from urllib.parse import urlparse
 from email.header import Header
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
+try:
+    import certifi
+    ssl_context = ssl.create_default_context(cafile=certifi.where())
+except Exception:
+    ssl_context = ssl.create_default_context()
+
 no_proxy_handler = urllib.request.ProxyHandler({})
-opener = urllib.request.build_opener(no_proxy_handler)
+https_handler = urllib.request.HTTPSHandler(context=ssl_context)
+opener = urllib.request.build_opener(no_proxy_handler, https_handler)
 headers: Dict[str, str] = {'Content-Type': 'application/json'}
+
+
+def _mask_url(value: str) -> str:
+    try:
+        parsed = urlparse(str(value))
+        if parsed.scheme and parsed.hostname:
+            return f"{parsed.scheme}://{parsed.hostname}/***"
+    except ValueError:
+        pass
+    return "***"
+
+
+def _mask_text(value: str) -> str:
+    return re.sub(r'https?://[^\s,;]+', lambda match: _mask_url(match.group(0)), str(value))
 
 
 def dingtalk(url: str, content: str, number: str = None, is_atall: bool = False) -> Dict[str, Any]:
@@ -48,11 +72,11 @@ def dingtalk(url: str, content: str, number: str = None, is_atall: bool = False)
             if json_data['errcode'] == 0:
                 success.append(api)
             else:
-                error.append(api)
-                print(f'钉钉推送失败, 推送地址：{api}, {json_data["errmsg"]}')
+                error.append(_mask_url(api))
+                print(_mask_text(f'钉钉推送失败, 推送地址：{api}, {json_data["errmsg"]}'))
         except Exception as e:
-            error.append(api)
-            print(f'钉钉推送失败, 推送地址：{api}, 错误信息:{e}')
+            error.append(_mask_url(api))
+            print(_mask_text(f'钉钉推送失败, 推送地址：{api}, 错误信息:{e}'))
     return {"success": success, "error": error}
 
 
@@ -71,14 +95,14 @@ def xizhi(url: str, title: str, content: str) -> Dict[str, Any]:
             response = opener.open(req, timeout=10)
             json_str = response.read().decode('utf-8')
             json_data = json.loads(json_str)
-            if json_data['code'] == 200:
+            if str(json_data.get('code')) in ('200', '0'):
                 success.append(api)
             else:
-                error.append(api)
-                print(f'微信推送失败, 推送地址：{api}, 失败信息：{json_data["msg"]}')
+                error.append(_mask_url(api))
+                print(_mask_text(f'微信推送失败, 推送地址：{api}, 失败信息：{json_data.get("msg") or json_data}'))
         except Exception as e:
-            error.append(api)
-            print(f'微信推送失败, 推送地址：{api}, 错误信息:{e}')
+            error.append(_mask_url(api))
+            print(_mask_text(f'微信推送失败, 推送地址：{api}, 错误信息:{e}'))
     return {"success": success, "error": error}
 
 
@@ -99,15 +123,15 @@ def send_email(email_host: str, login_email: str, email_pass: str, sender_email:
 
         if open_ssl:
             smtp_port = int(smtp_port) or 465
-            smtp_obj = smtplib.SMTP_SSL(email_host, smtp_port)
+            smtp_obj = smtplib.SMTP_SSL(email_host, smtp_port, timeout=15)
         else:
             smtp_port = int(smtp_port) or 25
-            smtp_obj = smtplib.SMTP(email_host, smtp_port)
+            smtp_obj = smtplib.SMTP(email_host, smtp_port, timeout=15)
         smtp_obj.login(login_email, email_pass)
         smtp_obj.sendmail(sender_email, receivers, message.as_string())
         return {"success": receivers, "error": []}
     except smtplib.SMTPException as e:
-        print(f'邮件推送失败, 推送邮箱：{to_email}, 错误信息:{e}')
+        print(_mask_text(f'邮件推送失败, 推送邮箱：{to_email}, 错误信息:{e}'))
         return {"success": [], "error": receivers}
 
 
@@ -125,7 +149,7 @@ def tg_bot(chat_id: int, token: str, content: str) -> Dict[str, Any]:
         _json_data = json.loads(json_str)
         return {"success": [1], "error": []}
     except Exception as e:
-        print(f'tg推送失败, 聊天ID：{chat_id}, 错误信息:{e}')
+        print(_mask_text(f'tg推送失败, 聊天ID：{chat_id}, 错误信息:{e}'))
         return {"success": [], "error": [1]}
 
 
@@ -157,11 +181,11 @@ def bark(api: str, title: str = "message", content: str = 'test', level: str = "
             if json_data['code'] == 200:
                 success.append(_api)
             else:
-                error.append(_api)
-                print(f'Bark推送失败, 推送地址：{_api}, 失败信息：{json_data["message"]}')
+                error.append(_mask_url(_api))
+                print(_mask_text(f'Bark推送失败, 推送地址：{_api}, 失败信息：{json_data["message"]}'))
         except Exception as e:
-            error.append(api)
-            print(f'Bark推送失败, 推送地址：{_api}, 错误信息:{e}')
+            error.append(_mask_url(api))
+            print(_mask_text(f'Bark推送失败, 推送地址：{_api}, 错误信息:{e}'))
     return {"success": success, "error": error}
 
 
@@ -201,15 +225,15 @@ def ntfy(api: str, title: str = "message", content: str = 'test', tags: str = 't
             if "error" not in json_data:
                 success.append(_api)
             else:
-                error.append(_api)
-                print(f'ntfy推送失败, 推送地址：{_api}, 失败信息：{json_data["error"]}')
+                error.append(_mask_url(_api))
+                print(_mask_text(f'ntfy推送失败, 推送地址：{_api}, 失败信息：{json_data["error"]}'))
         except urllib.error.HTTPError as e:
-            error.append(_api)
+            error.append(_mask_url(_api))
             error_msg = e.read().decode("utf-8")
-            print(f'ntfy推送失败, 推送地址：{_api}, 错误信息:{json.loads(error_msg)["error"]}')
+            print(_mask_text(f'ntfy推送失败, 推送地址：{_api}, 错误信息:{json.loads(error_msg)["error"]}'))
         except Exception as e:
-            error.append(api)
-            print(f'ntfy推送失败, 推送地址：{_api}, 错误信息:{e}')
+            error.append(_mask_url(api))
+            print(_mask_text(f'ntfy推送失败, 推送地址：{_api}, 错误信息:{e}'))
     return {"success": success, "error": error}
 
 
@@ -240,11 +264,11 @@ def pushplus(token: str, title: str, content: str) -> Dict[str, Any]:
             if json_data.get('code') == 200:
                 success.append(_token)
             else:
-                error.append(_token)
-                print(f'PushPlus推送失败, Token：{_token}, 失败信息：{json_data.get("msg", "未知错误")}')
+                error.append("***")
+                print(_mask_text(f'PushPlus推送失败, Token：***, 失败信息：{json_data.get("msg", "未知错误")}'))
         except Exception as e:
-            error.append(_token)
-            print(f'PushPlus推送失败, Token：{_token}, 错误信息:{e}')
+            error.append("***")
+            print(_mask_text(f'PushPlus推送失败, Token：***, 错误信息:{e}'))
     
     return {"success": success, "error": error}
 

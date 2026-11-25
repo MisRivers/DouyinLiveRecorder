@@ -138,6 +138,33 @@ DEFAULT_SETTINGS = [
     ("账号密码", "twitcasting密码", ""),
 ]
 
+DEFAULT_NOTIFICATION_TEMPLATES = [
+    (
+        "live_started", "开播通知",
+        "「{平台}」{主播} 正在直播\n标题：{标题}\n地址：{房间地址}\n时间：{时间}",
+    ),
+    (
+        "live_ended", "关播通知",
+        "「{平台}」{主播} 已下播\n本次直播时长：{直播时长}\n时间：{时间}",
+    ),
+    (
+        "recording_started", "开始录制",
+        "「{平台}」{主播} 开始录制\n标题：{标题}\n画质：{画质}\n文件：{文件名}",
+    ),
+    (
+        "recording_finished", "录制结束",
+        "「{平台}」{主播} 录制结束\n时长：{时长}\n大小：{文件大小}\n原因：{结束原因}\n文件：{文件名}",
+    ),
+    (
+        "conversion_finished", "转码完成",
+        "「{平台}」{主播} 转码完成\n文件：{文件名}\n时长：{时长}\n大小：{文件大小}",
+    ),
+    (
+        "recording_error", "录制异常",
+        "「{平台}」{主播} 录制异常\n时间：{时间}\n原因：{错误原因}\n地址：{房间地址}",
+    ),
+]
+
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -168,7 +195,9 @@ def init_db() -> None:
             conn.executescript(schema)
             _seed_platforms(conn)
             _seed_settings(conn)
+            _seed_notification_templates(conn)
             _seed_rooms(conn)
+            _migrate_notification_templates(conn)
             _set_meta(conn, "schema_version", "1")
             conn.commit()
         _initialized = True
@@ -290,6 +319,47 @@ def parse_room_line(line: str, default_quality: str) -> dict | None:
         "quality": quality,
         "custom_name": custom_name,
     }
+
+
+def _seed_notification_templates(conn: sqlite3.Connection) -> None:
+    for event_code, title, content in DEFAULT_NOTIFICATION_TEMPLATES:
+        conn.execute(
+            """
+            INSERT INTO notification_template
+              (event_code, enabled, title_template, content_template, updated_at)
+            VALUES (?, 0, ?, ?, ?)
+            ON CONFLICT(event_code) DO NOTHING
+            """,
+            (event_code, title, content, now_iso()),
+        )
+
+
+def _migrate_notification_templates(conn: sqlite3.Connection) -> None:
+    if conn.execute("SELECT 1 FROM app_meta WHERE key='notifications_migrated'").fetchone():
+        return
+    admin_count = conn.execute("SELECT COUNT(*) AS c FROM admin_user").fetchone()["c"]
+    rows = conn.execute("SELECT enabled FROM notification_template").fetchall()
+    any_enabled = any(row["enabled"] for row in rows)
+    if admin_count and not any_enabled:
+        legacy = {
+            row["key"]: row["value"]
+            for row in conn.execute(
+                "SELECT key, value FROM setting_value WHERE key IN "
+                "('开播推送开启(是/否)', '关播推送开启(是/否)')"
+            )
+        }
+        now = now_iso()
+        if legacy.get("开播推送开启(是/否)") == "是":
+            conn.execute(
+                "UPDATE notification_template SET enabled=1, updated_at=? WHERE event_code='live_started'",
+                (now,),
+            )
+        if legacy.get("关播推送开启(是/否)") == "是":
+            conn.execute(
+                "UPDATE notification_template SET enabled=1, updated_at=? WHERE event_code='live_ended'",
+                (now,),
+            )
+    _set_meta(conn, "notifications_migrated", "1")
 
 
 def _seed_rooms(conn: sqlite3.Connection) -> None:

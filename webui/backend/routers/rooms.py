@@ -5,7 +5,7 @@ from fastapi.responses import PlainTextResponse
 
 from .. import security
 from ..responses import ok
-from ..services import rooms_service
+from ..services import platform_service, rooms_service, schedule_service
 
 router = APIRouter(prefix="/api/rooms", tags=["rooms"])
 platform_router = APIRouter(prefix="/api", tags=["rooms"])
@@ -17,8 +17,9 @@ def platforms(request: Request, session: dict = Depends(security.require_user)):
 
 
 @platform_router.get("/platforms")
-def platforms_alias(request: Request, session: dict = Depends(security.require_user)):
-    return ok(rooms_service.platforms(), request)
+def platforms_alias(request: Request, include_disabled: bool = False, query: str = "",
+                    session: dict = Depends(security.require_user)):
+    return ok(platform_service.list_platforms(include_disabled, query), request)
 
 
 @router.get("")
@@ -76,6 +77,19 @@ def export_rooms(request: Request, session: dict = Depends(security.require_user
 @router.get("/{room_id}")
 def get_room(request: Request, room_id: int, session: dict = Depends(security.require_user)):
     return ok(rooms_service.get_room(room_id), request)
+
+
+@router.get("/{room_id}/schedule")
+def get_schedule(request: Request, room_id: int, session: dict = Depends(security.require_user)):
+    return ok(schedule_service.get(room_id), request)
+
+
+@router.put("/{room_id}/schedule")
+def save_schedule(request: Request, room_id: int, payload: dict,
+                  session: dict = Depends(security.require_user),
+                  _: None = Depends(security.require_csrf)):
+    return ok(schedule_service.replace(room_id, payload.get("windows", []),
+                                      session["username"], security.client_ip(request)), request)
 
 
 @router.patch("/{room_id}")

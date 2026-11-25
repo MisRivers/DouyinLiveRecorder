@@ -20,7 +20,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import config, db
 from .errors import ApiError, api_error_handler, validation_error_handler
-from .routers import auth, files, live, recorder, rooms, settings, system, ws
+from .routers import auth, automation, files, live, recorder, rooms, settings, system, ws
 from .services import files_service
 
 log = logging.getLogger("dlr.api")
@@ -175,6 +175,7 @@ def create_app() -> FastAPI:
     app.include_router(rooms.router)
     app.include_router(rooms.platform_router)
     app.include_router(settings.router)
+    app.include_router(automation.router)
     app.include_router(live.router)
     app.include_router(files.router)
     app.include_router(system.router)

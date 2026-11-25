@@ -6,11 +6,12 @@ import signal
 import sys
 import threading
 import time
+from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 from .. import config, db
-from ..services import files_service
+from ..services import files_service, notification_service, schedule_service
 from .ffmpeg_recorder import RecordingTask
 from .stream_resolver import resolve_stream
 
@@ -40,12 +41,18 @@ class RoomRunner(threading.Thread):
         super().__init__(name=f"room-{room_id}", daemon=True)
         self.engine = engine
         self.room_id = room_id
+        self.wake_event = threading.Event()
+        self._was_live = False
+        self._live_since: datetime | None = None
+
+    def wake(self) -> None:
+        self.wake_event.set()
 
     def _room(self) -> dict | None:
         with db.connect() as conn:
             row = conn.execute(
                 """
-                SELECT r.*, p.name AS platform_name
+                SELECT r.*, p.name AS platform_name, p.enabled AS platform_enabled
                 FROM room r JOIN platform_template p ON p.code=r.platform_code
                 WHERE r.id=?
                 """,
@@ -54,8 +61,27 @@ class RoomRunner(threading.Thread):
         return dict(row) if row else None
 
     def _sleep(self, seconds: int) -> None:
-        if seconds > 0:
-            self.engine.stop_event.wait(seconds)
+        if seconds <= 0:
+            return
+        deadline = time.time() + seconds
+        while not self.engine.stop_event.is_set():
+            remaining = deadline - time.time()
+            if remaining <= 0:
+                return
+            if self.wake_event.wait(min(remaining, 0.5)):
+                self.wake_event.clear()
+                return
+
+    def _notify_context(self, room: dict, **extra) -> dict:
+        context = {
+            "主播": room.get("custom_name") or room.get("last_anchor_name") or "未知主播",
+            "平台": room.get("platform_name") or room.get("platform_code") or "-",
+            "房间地址": room.get("url") or "-",
+            "画质": room.get("quality") or "-",
+            "时间": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        }
+        context.update(extra)
+        return context
 
     def run(self) -> None:
         while not self.engine.stop_event.is_set():
@@ -63,7 +89,29 @@ class RoomRunner(threading.Thread):
             if not room or not room["enabled"]:
                 db.set_live_state(self.room_id, state="disabled", updated_at=db.now_iso())
                 return
+            if not room["platform_enabled"]:
+                db.set_live_state(
+                    self.room_id, state="platform_disabled",
+                    platform_code=room["platform_code"], updated_at=db.now_iso(),
+                )
+                self._sleep(30)
+                continue
             settings = db.get_settings()
+            try:
+                windows = schedule_service.windows_for_room(self.room_id)
+                active = schedule_service.is_active(self.room_id, windows)
+                boundary = (schedule_service.next_boundary_seconds(self.room_id, windows)
+                            if not active else 0)
+            except Exception:
+                log.exception("schedule check failed room=%s", self.room_id)
+                windows, active, boundary = [], True, 0
+            if not active:
+                db.set_live_state(
+                    self.room_id, state="scheduled", platform_code=room["platform_code"],
+                    quality=room["quality"], error_code=None, error_message=None,
+                )
+                self._sleep(min(self._interval(settings), boundary))
+                continue
             db.set_live_state(
                 self.room_id, state="checking", platform_code=room["platform_code"],
                 quality=room["quality"], error_code=None, error_message=None,
@@ -73,13 +121,19 @@ class RoomRunner(threading.Thread):
                     info = resolve_stream(room, settings)
             except Exception as exc:
                 log.exception("fetch failed room=%s", self.room_id)
+                self._emit_end_if_live(room, "error")
                 db.set_live_state(
                     self.room_id, state="error", error_code="FETCH_FAILED",
                     error_message=str(exc)[:500],
                 )
+                notification_service.emit(
+                    "recording_error", self.room_id,
+                    **self._notify_context(room, 错误原因=f"拉流失败：{exc}"),
+                )
                 self._sleep(15)
                 continue
             if not info.get("is_live"):
+                self._emit_end_if_live(room, "ended")
                 db.set_live_state(
                     self.room_id, state="waiting",
                     anchor_name=info.get("anchor_name") or None,
@@ -88,6 +142,27 @@ class RoomRunner(threading.Thread):
                 )
                 self._sleep(self._interval(settings))
                 continue
+            anchor_name = info.get("anchor_name") or room.get("custom_name") or "未知主播"
+            push_only = settings.get("只推送通知不录制(是/否)", "否") == "是"
+            if push_only:
+                if not self._was_live:
+                    self._was_live = True
+                    self._live_since = datetime.now()
+                    notification_service.emit(
+                        "live_started", self.room_id,
+                        **self._notify_context(room, 主播=anchor_name,
+                                               标题=info.get("title") or "无标题"),
+                    )
+                db.set_live_state(
+                    self.room_id, state="live",
+                    anchor_name=info.get("anchor_name") or None,
+                    title=info.get("title") or None,
+                    quality=room["quality"], error_code=None, error_message=None,
+                )
+                self._sleep(self._interval(settings))
+                continue
+            if self._was_live:
+                self._emit_end_if_live(room, "recording")
             db.set_live_state(
                 self.room_id, state="live",
                 anchor_name=info.get("anchor_name") or None,
@@ -99,6 +174,11 @@ class RoomRunner(threading.Thread):
                               semaphore=self.engine.semaphore).run()
             except Exception as exc:
                 log.exception("record failed room=%s", self.room_id)
+                notification_service.emit(
+                    "recording_error", self.room_id,
+                    **self._notify_context(room, 主播=anchor_name, 错误原因=f"录制失败：{exc}"),
+                )
+                self._emit_end_if_live(room, "error")
                 db.set_live_state(
                     self.room_id, state="error", error_code="RECORD_FAILED",
                     error_message=str(exc)[:500],
@@ -106,6 +186,20 @@ class RoomRunner(threading.Thread):
                 self._sleep(15)
                 continue
             self._sleep(5 if self.engine.stop_event.is_set() is False else 0)
+
+    def _emit_end_if_live(self, room: dict, reason: str) -> None:
+        if not self._was_live:
+            return
+        duration = "-"
+        if self._live_since:
+            seconds = max(0, int((datetime.now() - self._live_since).total_seconds()))
+            duration = notification_service.context_duration(seconds)
+        notification_service.emit(
+            "live_ended", self.room_id,
+            **self._notify_context(room, 直播时长=duration, 结束原因=reason),
+        )
+        self._was_live = False
+        self._live_since = None
 
     def _interval(self, settings: dict) -> int:
         try:
@@ -146,12 +240,19 @@ class RecorderEngine:
         db.set_meta("recorder_state", "running")
         log.info("recorder started with %s rooms", len(rooms))
 
+    def wake_all(self) -> None:
+        with self._lock:
+            runners = list(self.runners.values())
+        for runner in runners:
+            runner.wake()
+
     def stop(self) -> None:
         if not self.running:
             db.set_meta("recorder_state", "stopped")
             return
         db.set_meta("recorder_state", "stopping")
         self.stop_event.set()
+        self.wake_all()
         with self._lock:
             runners = list(self.runners.values())
             self.runners.clear()
@@ -216,7 +317,7 @@ class RecorderEngine:
                 self.restart()
             elif name == "room.reload":
                 if self.running:
-                    self.restart()
+                    self.wake_all()
             db.finish_command(command["id"])
         except Exception as exc:
             log.exception("command failed %s", name)

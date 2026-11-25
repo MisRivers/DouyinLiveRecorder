@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import shlex
 import shutil
 import signal
 import subprocess
@@ -17,7 +18,7 @@ import httpx
 from src.utils import remove_emojis
 
 from .. import config, db, platform_registry
-from ..services import files_service
+from ..services import files_service, notification_service, schedule_service
 from .stream_resolver import resolve_stream, select_source_url
 
 log = logging.getLogger("dlr.recorder")
@@ -61,66 +62,31 @@ def _platform_headers(code: str, url: str) -> str | None:
 def _run_script(command: str, record_name: str, save_file: str, save_type: str,
                 split: bool, to_mp4: bool) -> None:
     try:
+        tokens = shlex.split(command.strip(), posix=(os.name != "nt"))
+        if os.name == "nt":
+            tokens = [
+                token[1:-1] if len(token) >= 2 and token[0] == token[-1] == '"' else token
+                for token in tokens
+            ]
+        if not tokens:
+            return
         if "python" in command:
             params = [
-                f'--record_name "{record_name}"',
-                f'--save_file_path "{save_file}"',
-                f"--save_type {save_type}",
-                f"--split_video_by_time {split}",
-                f"--converts_to_mp4 {to_mp4}",
+                "--record_name", str(record_name),
+                "--save_file_path", str(save_file),
+                "--save_type", str(save_type),
+                "--split_video_by_time", str(split),
+                "--converts_to_mp4", str(to_mp4),
             ]
         else:
             params = [
-                f'"{record_name}"',
-                f'"{save_file}"',
-                save_type,
+                str(record_name), str(save_file), str(save_type),
                 f"split_video_by_time:{split}",
                 f"converts_to_mp4:{to_mp4}",
             ]
-        subprocess.Popen(command.strip() + " " + " ".join(params), shell=True)
+        subprocess.Popen([*tokens, *params])
     except Exception as exc:
         log.warning("custom script failed: %s", exc)
-
-
-def _push(settings: dict, record_name: str, url: str, content: str) -> None:
-    channel_setting = (settings.get("直播状态推送渠道", "") or "").upper()
-    if not channel_setting:
-        return
-    from msg_push import bark, dingtalk, ntfy, pushplus, send_email, tg_bot, xizhi
-
-    title = settings.get("自定义推送标题") or "直播间状态更新通知"
-    try:
-        if "微信" in channel_setting:
-            xizhi(settings.get("微信推送接口链接", ""), title, content)
-        if "钉钉" in channel_setting:
-            dingtalk(
-                settings.get("钉钉推送接口链接", ""), content,
-                settings.get("钉钉通知@对象(填手机号)", ""),
-                settings.get("钉钉通知@全体(是/否)", "否") == "是",
-            )
-        if "邮箱" in channel_setting or "邮件" in channel_setting:
-            send_email(
-                settings.get("SMTP邮件服务器", ""), settings.get("邮箱登录账号", ""),
-                settings.get("发件人密码(授权码)", ""), settings.get("发件人邮箱", ""),
-                settings.get("发件人显示昵称", ""), settings.get("收件人邮箱", ""),
-                title, content, settings.get("SMTP邮件服务器端口", ""),
-                settings.get("是否使用SMTP服务SSL加密(是/否)", "是") == "是",
-            )
-        if "TG" in channel_setting:
-            tg_bot(settings.get("tg聊天id(个人或者群组id)", ""),
-                   settings.get("tgapi令牌", ""), content)
-        if "BARK" in channel_setting:
-            bark(settings.get("bark推送接口链接", ""), title=title, content=content,
-                 level=settings.get("bark推送中断级别", "active"),
-                 sound=settings.get("bark推送铃声", ""))
-        if "NTFY" in channel_setting:
-            ntfy(settings.get("ntfy推送地址", ""), title=title, content=content,
-                 tags=settings.get("ntfy推送标签", "tada"),
-                 action_url=url, email=settings.get("ntfy推送邮箱", ""))
-        if "PUSHPLUS" in channel_setting:
-            pushplus(settings.get("pushplus推送token", ""), title, content)
-    except Exception as exc:
-        log.warning("push failed: %s", exc)
 
 
 class RecordingTask:
@@ -147,6 +113,17 @@ class RecordingTask:
         self.base_time = datetime.now()
         self.part = 0
         self.save_dir: Path | None = None
+
+    def _context(self, **extra) -> dict:
+        context = {
+            "主播": self.anchor,
+            "平台": self.room.get("platform_name") or self.platform_code,
+            "房间地址": self.room.get("url") or "-",
+            "画质": self.room.get("quality") or "-",
+            "时间": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        }
+        context.update(extra)
+        return context
 
     def _format(self) -> str:
         if self.platform_code in DIRECT_FLV:
@@ -341,9 +318,23 @@ class RecordingTask:
         if self.stop_event.is_set():
             return "stopped"
         with db.connect() as conn:
-            row = conn.execute("SELECT enabled FROM room WHERE id=?", (self.room_id,)).fetchone()
+            row = conn.execute(
+                """
+                SELECT r.enabled, p.enabled AS platform_enabled
+                FROM room r JOIN platform_template p ON p.code=r.platform_code
+                WHERE r.id=?
+                """,
+                (self.room_id,),
+            ).fetchone()
             if not row or not row["enabled"]:
                 return "disabled"
+            if not row["platform_enabled"]:
+                return "platform_disabled"
+        try:
+            if not schedule_service.is_active(self.room_id):
+                return "schedule_ended"
+        except Exception:
+            log.exception("schedule check failed room=%s", self.room_id)
         threshold = float(self.settings.get("录制空间剩余阈值(gb)", "1.0") or 0)
         try:
             root = config.save_path_from_settings(self.settings)
@@ -386,13 +377,10 @@ class RecordingTask:
             conn.execute("UPDATE room SET last_anchor_name=?, updated_at=? WHERE id=?",
                          (self.info.get("anchor_name") or self.anchor, db.now_iso(), self.room_id))
             conn.commit()
-        if self.settings.get("开播推送开启(是/否)", "是") == "是":
-            threading.Thread(
-                target=_push,
-                args=(self.settings, self.anchor, self.room["url"],
-                      f"{self.anchor} 正在直播中，时间：{datetime.now():%Y-%m-%d %H:%M:%S}"),
-                daemon=True,
-            ).start()
+        notification_service.emit(
+            "recording_started", self.room_id,
+            **self._context(标题=self.info.get("title") or "无标题", 文件名=target.name),
+        )
 
         while True:
             if self.part > 0:
@@ -550,10 +538,13 @@ class RecordingTask:
 
     def _finalize(self, ext: str) -> None:
         self._update_bytes()
-        status = "completed" if self.stop_reason in ("ended", "disabled", "stopped") else "failed"
+        completed_reasons = ("ended", "disabled", "stopped", "platform_disabled", "schedule_ended")
+        status = "completed" if self.stop_reason in completed_reasons else "failed"
         if self.stop_reason == "error":
             status = "failed"
         end_at = db.now_iso()
+        output_path = self.outputs[0] if self.outputs else self.target_pattern
+        total_bytes = sum(p.stat().st_size for p in self.outputs if p.exists())
         with db.connect() as conn:
             conn.execute(
                 """
@@ -562,19 +553,42 @@ class RecordingTask:
                 WHERE id=?
                 """,
                 (status, self.stop_reason, end_at,
-                 str(self.outputs[0]) if self.outputs else str(self.target_pattern),
-                 sum(p.stat().st_size for p in self.outputs if p.exists()), self.session_id),
+                 str(output_path), total_bytes, self.session_id),
             )
             conn.commit()
         state = "checking"
         if self.stop_reason == "disabled":
             state = "disabled"
+        elif self.stop_reason == "platform_disabled":
+            state = "platform_disabled"
+        elif self.stop_reason == "schedule_ended":
+            state = "scheduled"
         db.set_live_state(
             self.room_id, state=state, session_id=None,
             file_path=str(self.outputs[0]) if self.outputs else None,
             error_code=None if status == "completed" else "RECORD_FAILED",
             error_message=None if status == "completed" else self.stop_reason,
         )
+        reason_text = {
+            "ended": "直播结束", "disabled": "房间已停用", "stopped": "手动停止",
+            "error": "录制异常", "disk_low": "磁盘空间不足",
+            "platform_disabled": "平台已禁用", "schedule_ended": "计划时段结束",
+        }.get(self.stop_reason, self.stop_reason)
+        duration_seconds = max(0, int((datetime.now() - self.base_time).total_seconds()))
+        notification_service.emit(
+            "recording_finished", self.room_id,
+            **self._context(
+                文件名=output_path.name if output_path else "-",
+                时长=notification_service.context_duration(duration_seconds),
+                文件大小=notification_service.context_size(total_bytes),
+                结束原因=reason_text,
+            ),
+        )
+        if status == "failed":
+            notification_service.emit(
+                "recording_error", self.room_id,
+                **self._context(错误原因=f"录制失败：{reason_text}"),
+            )
         if ext == "ts":
             root = config.save_path_from_settings(self.settings)
             rels = []
@@ -587,13 +601,6 @@ class RecordingTask:
                     continue
             if rels:
                 files_service.enqueue_conversion(rels, trigger=self.stop_reason)
-        if self.settings.get("关播推送开启(是/否)", "否") == "是":
-            threading.Thread(
-                target=_push,
-                args=(self.settings, self.anchor, self.room["url"],
-                      f"{self.anchor} 直播已结束，时间：{datetime.now():%Y-%m-%d %H:%M:%S}"),
-                daemon=True,
-            ).start()
         if (self.settings.get("是否录制完成后执行自定义脚本", "否") == "是"
                 and self.settings.get("自定义脚本执行命令")):
             _run_script(

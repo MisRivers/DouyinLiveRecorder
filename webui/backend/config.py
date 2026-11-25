@@ -31,6 +31,7 @@ CSRF_HEADER = "X-CSRF-Token"
 SESSION_HOURS = 24
 LOGIN_MAX_FAILURES = 5
 LOGIN_LOCK_SECONDS = 900
+TRUST_PROXY = os.environ.get("DLR_TRUST_PROXY", "").lower() in ("1", "true", "yes", "on")
 
 
 def ensure_dirs() -> None:

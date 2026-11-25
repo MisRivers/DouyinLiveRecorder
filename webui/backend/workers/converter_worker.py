@@ -10,8 +10,8 @@ import time
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-from .. import config, db
-from ..services import files_service, recorder_control
+from .. import config, db, platform_registry
+from ..services import files_service, notification_service, recorder_control
 
 log = logging.getLogger("dlr.converter")
 
@@ -143,6 +143,22 @@ def _claim() -> dict | None:
         conn.close()
 
 
+def _notify_context(job: dict) -> dict:
+    src = Path(job["src_path"])
+    anchor = src.parent.name
+    platform = "-"
+    for item in platform_registry.PLATFORMS:
+        if item.get("dir_name") == src.parent.parent.name:
+            platform = item.get("name") or item["code"]
+            break
+    return {
+        "主播": anchor,
+        "平台": platform,
+        "时间": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "文件名": Path(job["dst_path"]).name,
+    }
+
+
 def _process(job: dict) -> None:
     log.info("converting %s", job["src_path"])
     try:
@@ -168,8 +184,23 @@ def _process(job: dict) -> None:
         conn.commit()
     if ok:
         log.info("converted %s", job["dst_path"])
+        dst = Path(job["dst_path"])
+        size = dst.stat().st_size if dst.exists() else 0
+        duration = _ffprobe_duration(dst) if dst.exists() else 0
+        notification_service.emit(
+            "conversion_finished", None,
+            **(_notify_context(job) | {
+                "时长": notification_service.context_duration(duration),
+                "文件大小": notification_service.context_size(size),
+            }),
+        )
     else:
         log.warning("conversion failed %s: %s", job["src_path"], error)
+        if status == "failed":
+            notification_service.emit(
+                "recording_error", None,
+                **(_notify_context(job) | {"错误原因": f"转码失败：{error}"}),
+            )
 
 
 def _startup() -> None:

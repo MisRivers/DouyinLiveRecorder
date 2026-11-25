@@ -6,6 +6,7 @@ import { formatTime, store, toast } from '../store'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import Modal from '../components/Modal.vue'
 import Icon from '../components/Icon.vue'
+import ScheduleEditor from '../components/ScheduleEditor.vue'
 
 const QUALITIES = ['原画', '蓝光', '超清', '高清', '标清', '流畅']
 const PAGE_SIZES = [10, 20, 30, 50, 100]
@@ -25,6 +26,12 @@ const importOpen = ref(false)
 const importText = ref('')
 const confirmDisable = ref(null)
 const confirmDelete = ref(null)
+const scheduleOpen = ref(false)
+const scheduleRoom = ref(null)
+const draftScheduleOpen = ref(false)
+const draftSchedule = ref([])
+const platformIdInput = ref(null)
+const roomUrlInput = ref(null)
 const route = useRoute()
 const highlightRoomId = ref(null)
 const focusNotice = ref(null)
@@ -101,6 +108,9 @@ const form = reactive({
 })
 
 const selectedPlatform = computed(() => platforms.value.find((item) => item.code === form.platform_code))
+const enabledPlatforms = computed(() => platforms.value.filter((item) => item.enabled))
+const formPlatforms = computed(() => platforms.value.filter((item) =>
+  item.enabled || item.code === editing.value?.platform_code))
 const pageCount = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
 
 function readPageSize() {
@@ -127,12 +137,20 @@ const generatedUrl = computed(() => {
   return form.url
 })
 const canQuick = computed(() => selectedPlatform.value?.quick_add_mode === 'id' && !!selectedPlatform.value?.url_template)
+const draftScheduleText = computed(() => {
+  const list = draftSchedule.value
+  if (!list.length) return '全天（无计划）'
+  const first = list[0]
+  const days = first.weekdays.length === 7 ? '每天' : `${first.weekdays.length} 天`
+  return `${days} ${first.start}-${first.end}${list.length > 1 ? ` 等 ${list.length} 段` : ''}`
+})
 
 async function loadPlatforms() {
   try {
-    const data = await api('/rooms/platforms')
+    const data = await api('/platforms?include_disabled=1')
     const preferred = ['douyin', 'kuaishou', 'huya', 'douyu', 'bilibili', 'tiktok', 'youtube', 'twitch', 'sooplive', 'chzzk']
     platforms.value = [...data].sort((a, b) => {
+      if (a.enabled !== b.enabled) return a.enabled ? -1 : 1
       const ia = preferred.indexOf(a.code)
       const ib = preferred.indexOf(b.code)
       if (ia !== -1 || ib !== -1) {
@@ -142,7 +160,7 @@ async function loadPlatforms() {
       }
       return a.name.localeCompare(b.name, 'zh-CN')
     })
-    if (!platforms.value.find((item) => item.code === form.platform_code) && platforms.value.length) {
+    if (!platforms.value.find((item) => item.code === form.platform_code && item.enabled) && enabledPlatforms.value.length) {
       form.platform_code = defaultPlatform()
     }
   } catch (err) {
@@ -151,7 +169,11 @@ async function loadPlatforms() {
 }
 
 function defaultPlatform() {
-  return platforms.value.find((item) => item.code === 'douyin')?.code || platforms.value[0]?.code || 'douyin'
+  return enabledPlatforms.value.find((item) => item.code === 'douyin')?.code
+    || enabledPlatforms.value[0]?.code
+    || platforms.value.find((item) => item.code === 'douyin')?.code
+    || platforms.value[0]?.code
+    || 'douyin'
 }
 
 async function load() {
@@ -195,9 +217,32 @@ watch(() => form.platform_code, () => {
 })
 
 function openCreate() {
+  if (!enabledPlatforms.value.length) {
+    toast('所有平台均已禁用，请先在“系统配置 · 平台管理”启用平台', 'warning')
+    return
+  }
   editing.value = null
+  draftSchedule.value = []
   resetForm()
   modalOpen.value = true
+  setTimeout(() => {
+    const input = form.mode === 'id' ? platformIdInput.value : roomUrlInput.value
+    input?.focus()
+  }, 90)
+}
+
+function openSchedule(room) {
+  scheduleRoom.value = room
+  scheduleOpen.value = true
+}
+
+async function onScheduleSaved() {
+  await load()
+}
+
+function onDraftScheduleSaved(windows) {
+  draftSchedule.value = windows
+  draftScheduleOpen.value = false
 }
 
 function openEdit(room) {
@@ -237,12 +282,23 @@ async function save() {
         custom_name: form.custom_name || null,
         enabled: form.enabled
       }
+      let created
       if (form.mode === 'id') {
         payload.platform_id = form.platform_id.trim()
-        await api('/rooms/quick-add', { method: 'POST', body: payload })
+        created = await api('/rooms/quick-add', { method: 'POST', body: payload })
       } else {
         payload.url = form.url.trim()
-        await api('/rooms', { method: 'POST', body: payload })
+        created = await api('/rooms', { method: 'POST', body: payload })
+      }
+      if (draftSchedule.value.length && created?.id) {
+        try {
+          await api(`/rooms/${created.id}/schedule`, {
+            method: 'PUT',
+            body: { windows: draftSchedule.value }
+          })
+        } catch (err) {
+          toast(`直播间已添加，但计划保存失败：${err.message}`, 'warning')
+        }
       }
       toast('直播间已添加', 'success')
     }
@@ -407,13 +463,15 @@ async function focusRoom(roomId) {
 function stateText(state) {
   return {
     recording: '录制中', live: '直播中', waiting: '等待直播', checking: '检测中',
-    stopping: '停止中', error: '异常', disabled: '已停用'
+    stopping: '停止中', error: '异常', disabled: '已停用',
+    scheduled: '计划外', platform_disabled: '平台已禁用'
   }[state] || state
 }
 
 function stateClass(state) {
   if (state === 'recording') return 'recording'
-  if (state === 'error') return 'error'
+  if (state === 'error' || state === 'platform_disabled') return 'error'
+  if (state === 'scheduled') return 'scheduled'
   if (['live', 'waiting', 'checking', 'stopping'].includes(state)) return 'waiting'
   return 'disabled'
 }
@@ -486,7 +544,7 @@ onBeforeUnmount(() => {
               <th>自定义主播名</th>
               <th>URL</th>
               <th style="width:96px">画质</th>
-              <th style="width:170px;text-align:right">操作</th>
+              <th style="width:214px;text-align:right">操作</th>
             </tr>
           </thead>
           <tbody>
@@ -510,11 +568,19 @@ onBeforeUnmount(() => {
               <td data-label="自定义主播名">
                 <div class="room-name-line">
                   <span class="room-name-text">{{ room.custom_name || room.last_anchor_name || '未设置' }}</span>
-                  <span v-if="room.live_state === 'recording' || room.live_state === 'error'"
+                  <span v-if="['recording', 'error', 'platform_disabled', 'scheduled'].includes(room.live_state)"
                         class="badge" :class="stateClass(room.live_state)">{{ stateText(room.live_state) }}</span>
+                  <button type="button" class="schedule-chip" :title="`录制计划：${room.schedule_summary}`"
+                          @click.stop="openSchedule(room)">
+                    <Icon name="calendar" :size="13" />
+                    <span>{{ room.schedule_summary }}</span>
+                  </button>
                   <span v-if="highlightRoomId === room.id" class="badge locating">已定位</span>
                 </div>
-                <div class="cell-muted">{{ room.platform_name }}<span class="rooms-mobile-quality"> · {{ room.quality }}</span></div>
+                <div class="cell-muted">
+                  {{ room.platform_name }}<span class="rooms-mobile-quality"> · {{ room.quality }}</span>
+                  <span v-if="room.platform_enabled === false" class="badge warning platform-off-badge">平台已禁用</span>
+                </div>
               </td>
               <td data-label="URL" class="cell-url">
                 <div class="url-cell" :title="room.url">{{ room.url }}</div>
@@ -522,6 +588,10 @@ onBeforeUnmount(() => {
               <td data-label="画质">{{ room.quality }}</td>
               <td data-label="操作" class="cell-actions">
                 <div class="cell-actions-inner">
+                  <button class="btn btn-sm btn-ghost room-action-btn" title="录制计划" aria-label="录制计划"
+                          @click="openSchedule(room)">
+                    <Icon name="calendar" :size="14" /><span class="room-action-label">计划</span>
+                  </button>
                   <button class="btn btn-sm btn-ghost room-action-btn" title="编辑直播间" aria-label="编辑直播间"
                           @click="openEdit(room)">
                     <Icon name="edit" :size="14" /><span class="room-action-label">编辑</span>
@@ -554,17 +624,26 @@ onBeforeUnmount(() => {
 
     <Modal :open="modalOpen" :title="editing ? '编辑直播间' : '新增直播间'" wide @close="modalOpen = false">
       <div class="form-grid">
-        <div class="field">
-          <label class="field-label">平台</label>
-          <select v-model="form.platform_code" class="select">
-            <option v-for="item in platforms" :key="item.code" :value="item.code">{{ item.name }}</option>
-          </select>
-        </div>
-        <div class="field">
-          <label class="field-label">画质</label>
-          <select v-model="form.quality" class="select">
-            <option v-for="item in QUALITIES" :key="item" :value="item">{{ item }}</option>
-          </select>
+        <div class="field span-2 room-basic-row">
+          <div class="field">
+            <label class="field-label">平台</label>
+            <select v-model="form.platform_code" class="select">
+              <option v-for="item in formPlatforms" :key="item.code" :value="item.code">
+                {{ item.name }}{{ item.enabled ? '' : '（已禁用）' }}
+              </option>
+            </select>
+          </div>
+          <div class="field">
+            <label class="field-label">画质</label>
+            <select v-model="form.quality" class="select">
+              <option v-for="item in QUALITIES" :key="item" :value="item">{{ item }}</option>
+            </select>
+          </div>
+          <div class="field">
+            <label class="field-label">自定义主播名（可选）</label>
+            <input v-model="form.custom_name" class="input" placeholder="留空则使用平台主播名" />
+            <span class="field-hint">不能包含逗号、# 或换行。</span>
+          </div>
         </div>
         <div class="field span-2">
           <label class="field-label">直播间地址</label>
@@ -575,17 +654,25 @@ onBeforeUnmount(() => {
           </div>
           <div v-if="form.mode === 'id'" class="input-group">
             <span class="prefix">{{ prefix }}</span>
-            <input v-model="form.platform_id" class="input"
+            <input ref="platformIdInput" v-model="form.platform_id" class="input"
                    :placeholder="selectedPlatform?.example ? '例如 ' + selectedPlatform.name + ' ID' : '请输入平台 ID'" />
           </div>
-          <input v-else v-model="form.url" class="input" placeholder="请输入完整的直播间地址" />
+          <input v-else ref="roomUrlInput" v-model="form.url" class="input" placeholder="请输入完整的直播间地址" />
           <div v-if="generatedUrl" class="quick-preview">生成地址：{{ generatedUrl }}</div>
           <span class="field-hint">{{ selectedPlatform?.example ? '示例：' + selectedPlatform.example : '' }}</span>
         </div>
-        <div class="field">
-          <label class="field-label">自定义主播名（可选）</label>
-          <input v-model="form.custom_name" class="input" placeholder="留空则使用平台主播名" />
-          <span class="field-hint">不能包含逗号、# 或换行。</span>
+        <div v-if="!editing" class="field span-2">
+          <label class="field-label">录制计划（可选）</label>
+          <div class="schedule-draft-row">
+            <button type="button" class="schedule-chip" title="点击设置录制计划"
+                    @click="draftScheduleOpen = true">
+              <Icon name="calendar" :size="13" />
+              <span>{{ draftScheduleText }}</span>
+            </button>
+            <button v-if="draftSchedule.length" type="button" class="btn btn-sm btn-ghost"
+                    @click="draftSchedule = []">清除</button>
+          </div>
+          <span class="field-hint">默认全天录制；点击上方计划可设置每周时段，保存直播间后生效。</span>
         </div>
         <div class="field">
           <label class="field-label">启用</label>
@@ -633,6 +720,21 @@ onBeforeUnmount(() => {
       :busy="busy"
       @confirm="remove(confirmDelete)"
       @cancel="confirmDelete = null"
+    />
+
+    <ScheduleEditor
+      :open="scheduleOpen"
+      :room="scheduleRoom"
+      @close="scheduleOpen = false"
+      @saved="onScheduleSaved"
+    />
+
+    <ScheduleEditor
+      :open="draftScheduleOpen"
+      draft
+      :initial-windows="draftSchedule"
+      @close="draftScheduleOpen = false"
+      @saved="onDraftScheduleSaved"
     />
   </div>
 </template>

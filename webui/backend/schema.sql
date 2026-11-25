@@ -185,3 +185,33 @@ CREATE TABLE IF NOT EXISTS app_meta (
     value TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS room_schedule (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    room_id INTEGER NOT NULL REFERENCES room(id) ON DELETE CASCADE,
+    weekdays TEXT NOT NULL,
+    start_minute INTEGER NOT NULL,
+    end_minute INTEGER NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_schedule_room ON room_schedule(room_id);
+
+CREATE TABLE IF NOT EXISTS notification_template (
+    event_code TEXT PRIMARY KEY,
+    enabled INTEGER NOT NULL DEFAULT 0,
+    title_template TEXT NOT NULL,
+    content_template TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS notification_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_code TEXT NOT NULL,
+    room_id INTEGER,
+    channel TEXT NOT NULL,
+    status TEXT NOT NULL,
+    error TEXT,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_notify_dedup
+    ON notification_log(event_code, room_id, created_at);

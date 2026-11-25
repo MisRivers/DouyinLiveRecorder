@@ -24,10 +24,6 @@ def status(request: Request):
 
 @router.post("/setup")
 def setup(request: Request, payload: dict):
-    with db.connect() as conn:
-        count = conn.execute("SELECT COUNT(*) AS c FROM admin_user").fetchone()["c"]
-    if count:
-        raise ApiError(409, "SETUP_ALREADY_DONE", "管理员已经初始化")
     username = (payload.get("username") or "").strip()
     password = payload.get("password") or ""
     confirm = payload.get("password_confirm") or ""
@@ -37,18 +33,34 @@ def setup(request: Request, payload: dict):
         raise ApiError(422, "WEAK_PASSWORD", "密码至少 10 位，且包含字母与数字")
     if password != confirm:
         raise ApiError(422, "PASSWORD_MISMATCH", "两次输入的密码不一致")
-    now = db.now_iso()
     with db.connect() as conn:
-        cur = conn.execute(
-            """
-            INSERT INTO admin_user (username, password_hash, password_algo, created_at, updated_at)
-            VALUES (?, ?, 'scrypt', ?, ?)
-            """,
-            (username, security.hash_password(password), now, now),
-        )
-        user_id = int(cur.lastrowid)
-        db._set_meta(conn, "setup_completed", "1")
-        conn.commit()
+        if conn.execute("SELECT COUNT(*) AS c FROM admin_user").fetchone()["c"]:
+            raise ApiError(409, "SETUP_ALREADY_DONE", "管理员已经初始化")
+    now = db.now_iso()
+    password_hash = security.hash_password(password)
+    with db.connect() as conn:
+        try:
+            # 用写锁串行化首次初始化，避免并发请求各自创建管理员。
+            conn.execute("BEGIN IMMEDIATE")
+            count = conn.execute("SELECT COUNT(*) AS c FROM admin_user").fetchone()["c"]
+            if count:
+                conn.rollback()
+                raise ApiError(409, "SETUP_ALREADY_DONE", "管理员已经初始化")
+            cur = conn.execute(
+                """
+                INSERT INTO admin_user (username, password_hash, password_algo, created_at, updated_at)
+                VALUES (?, ?, 'scrypt', ?, ?)
+                """,
+                (username, password_hash, now, now),
+            )
+            user_id = int(cur.lastrowid)
+            db._set_meta(conn, "setup_completed", "1")
+            conn.commit()
+        except ApiError:
+            raise
+        except Exception:
+            conn.rollback()
+            raise
     token, csrf = security.create_session(user_id, request)
     db.audit(username, "auth.setup", "user", str(user_id), None, security.client_ip(request))
     response = ok({"user": {"username": username}, "csrf_token": csrf}, request, 201)

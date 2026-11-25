@@ -5,6 +5,7 @@ import sqlite3
 
 from .. import db, platform_registry
 from ..errors import ApiError
+from . import platform_service, schedule_service
 
 SORT_FIELDS = {
     "sort_order": "r.sort_order",
@@ -39,6 +40,8 @@ def _validate_quality(quality: str) -> str:
 def _room_row(row: sqlite3.Row) -> dict:
     item = dict(row)
     item["enabled"] = bool(item["enabled"])
+    if "platform_enabled" in item:
+        item["platform_enabled"] = bool(item["platform_enabled"])
     return item
 
 
@@ -66,7 +69,7 @@ def list_rooms(query: str = "", enabled: bool | None = None, platform_code: str 
         total = conn.execute(f"SELECT COUNT(*) AS c FROM room r {clause}", params).fetchone()["c"]
         rows = conn.execute(
             f"""
-            SELECT r.*, p.name AS platform_name,
+            SELECT r.*, p.name AS platform_name, p.enabled AS platform_enabled,
                    COALESCE(l.state, CASE WHEN r.enabled=1 THEN 'checking' ELSE 'disabled' END) AS live_state
             FROM room r
             JOIN platform_template p ON p.code=r.platform_code
@@ -77,8 +80,14 @@ def list_rooms(query: str = "", enabled: bool | None = None, platform_code: str 
             """,
             params + [page_size, (page - 1) * page_size],
         ).fetchall()
+    items = [_room_row(row) for row in rows]
+    schedule_map = schedule_service.summaries([item["id"] for item in items])
+    for item in items:
+        info = schedule_map.get(item["id"], {"count": 0, "summary": "全天"})
+        item["schedule_summary"] = info["summary"]
+        item["schedule_count"] = info["count"]
     return {
-        "items": [_room_row(row) for row in rows],
+        "items": items,
         "total": total,
         "page": page,
         "page_size": page_size,
@@ -89,6 +98,7 @@ def _insert_room(payload: dict, actor: str, ip: str | None) -> dict:
     platform_code = (payload.get("platform_code") or "").strip()
     if not platform_registry.platform_by_code(platform_code):
         raise ApiError(422, "PLATFORM_NOT_SUPPORTED", "平台不存在或未适配")
+    platform_service.require_enabled(platform_code)
     url = platform_registry.normalize_url(payload.get("url") or "")
     if not platform_registry.validate_platform_url(platform_code, url):
         raise ApiError(400, "INVALID_URL", "直播间地址与所选平台不匹配")
@@ -131,7 +141,7 @@ def get_room(room_id: int) -> dict:
     with db.connect() as conn:
         row = conn.execute(
             """
-            SELECT r.*, p.name AS platform_name,
+            SELECT r.*, p.name AS platform_name, p.enabled AS platform_enabled,
                    COALESCE(l.state, 'disabled') AS live_state
             FROM room r
             JOIN platform_template p ON p.code=r.platform_code
@@ -182,6 +192,7 @@ def update(room_id: int, payload: dict, actor: str, ip: str | None) -> dict:
         code = payload["platform_code"]
         if not platform_registry.platform_by_code(code):
             raise ApiError(422, "PLATFORM_NOT_SUPPORTED", "平台不存在或未适配")
+        platform_service.require_enabled(code)
         if not platform_registry.validate_platform_url(code, room["url"]):
             raise ApiError(400, "INVALID_URL", "现有地址与新的平台不匹配")
         fields["platform_code"] = code
@@ -248,8 +259,12 @@ def import_ini(content: str, actor: str, ip: str | None) -> dict:
     default_quality = db.get_setting("原画|超清|高清|标清|流畅", "原画")
     imported = 0
     skipped = 0
+    skipped_disabled = 0
     errors = []
     with db.connect() as conn:
+        enabled_codes = {
+            row["code"] for row in conn.execute("SELECT code FROM platform_template WHERE enabled=1")
+        }
         order = conn.execute("SELECT COALESCE(MAX(sort_order), -1) + 1 AS n FROM room").fetchone()["n"]
         for line in content.splitlines():
             parsed = db.parse_room_line(line, default_quality)
@@ -257,6 +272,10 @@ def import_ini(content: str, actor: str, ip: str | None) -> dict:
                 if line.strip():
                     skipped += 1
                     errors.append(line.strip()[:120])
+                continue
+            if parsed["platform_code"] not in enabled_codes:
+                skipped_disabled += 1
+                errors.append(f"{line.strip()[:100]}（平台已禁用）")
                 continue
             try:
                 conn.execute(
@@ -285,8 +304,9 @@ def import_ini(content: str, actor: str, ip: str | None) -> dict:
         conn.commit()
     db.render_url_config()
     db.audit(actor, "room.import", "room", None,
-             {"imported": imported, "skipped": skipped}, ip)
-    return {"imported": imported, "skipped": skipped, "errors": errors[:20]}
+             {"imported": imported, "skipped": skipped, "skipped_disabled": skipped_disabled}, ip)
+    return {"imported": imported, "skipped": skipped + skipped_disabled,
+            "skipped_disabled": skipped_disabled, "errors": errors[:20]}
 
 
 def export_ini() -> str:

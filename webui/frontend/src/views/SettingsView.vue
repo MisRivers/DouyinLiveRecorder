@@ -1,12 +1,15 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { api, downloadText } from '../api'
 import { toast } from '../store'
 import Icon from '../components/Icon.vue'
 import Modal from '../components/Modal.vue'
+import NotificationTemplatesPanel from '../components/NotificationTemplatesPanel.vue'
+import PlatformManagerPanel from '../components/PlatformManagerPanel.vue'
 
 const groups = ref([])
 const activeGroup = ref('record')
+const extraTab = ref('')
 const values = ref({})
 const draft = reactive({})
 const initial = reactive({})
@@ -21,20 +24,41 @@ const testChannel = ref('钉钉')
 const testing = ref(false)
 const search = ref('')
 const openChannelField = ref('')
+const templatesRef = ref(null)
+const templatesDirty = ref(0)
+const templatesMounted = ref(false)
 
 const channels = ['微信', '钉钉', '邮箱', 'TG', 'BARK', 'NTFY', 'PUSHPLUS']
+const HIDDEN_SETTING_KEYS = new Set([
+  '自定义开播推送内容',
+  '自定义关播推送内容',
+  '开播推送开启(是/否)',
+  '关播推送开启(是/否)'
+])
 
 const currentGroup = computed(() => groups.value.find((item) => item.code === activeGroup.value))
 const fields = computed(() => {
   const list = currentGroup.value?.fields || []
   const needle = search.value.trim().toLowerCase()
   return list.filter((field) => {
+    if (HIDDEN_SETTING_KEYS.has(field.key)) return false
     if (!showAdvanced.value && field.advanced) return false
     if (!needle) return true
     return `${field.label} ${field.key} ${field.section}`.toLowerCase().includes(needle)
   })
 })
 const dirtyCount = computed(() => dirty.size)
+const totalDirty = computed(() => dirtyCount.value + templatesDirty.value)
+const dirtyLabel = computed(() => {
+  const parts = []
+  if (dirtyCount.value) parts.push(`${dirtyCount.value} 项配置`)
+  if (templatesDirty.value) parts.push(`${templatesDirty.value} 个通知模板`)
+  return parts.length ? `${parts.join('、')}未保存` : '所有修改已保存'
+})
+
+watch(activeGroup, (code) => {
+  if (code === 'push') templatesMounted.value = true
+}, { immediate: true })
 
 function keyOf(field) {
   return `${field.section}::${field.key}`
@@ -136,40 +160,67 @@ function setBool(field, checked) {
 
 function markGroup(code) {
   activeGroup.value = code
+  extraTab.value = ''
+  search.value = ''
+}
+
+function markExtra(code) {
+  extraTab.value = code
   search.value = ''
 }
 
 async function save() {
-  if (!dirtyCount.value) return
-  const updates = []
-  for (const group of groups.value) {
-    for (const field of group.fields) {
-      const key = keyOf(field)
-      if (!dirty.has(key)) continue
-      const value = draft[key]
-      if (field.secret && !value) continue
-      updates.push({ section: field.section, key: field.key, value })
-    }
-  }
-  if (!updates.length) { toast('没有需要保存的修改', 'info'); return }
+  if (!totalDirty.value) return
   busy.value = true
   try {
-    const result = await api('/settings', { method: 'PUT', body: { updates } })
-    const fieldMap = new Map()
-    for (const group of groups.value) {
-      for (const field of group.fields) fieldMap.set(`${field.section}::${field.key}`, field)
-    }
-    for (const item of updates) {
-      const key = `${item.section}::${item.key}`
-      const field = fieldMap.get(key)
-      initial[key] = field?.secret ? '' : item.value
-      if (field?.secret) {
-        draft[key] = ''
-        hasValue[key] = !!item.value
+    let savedSettings = 0
+    let savedTemplates = 0
+    let restart = false
+    let hint = ''
+    if (dirtyCount.value) {
+      const updates = []
+      for (const group of groups.value) {
+        for (const field of group.fields) {
+          const key = keyOf(field)
+          if (!dirty.has(key)) continue
+          const value = draft[key]
+          if (field.secret && !value) continue
+          updates.push({ section: field.section, key: field.key, value })
+        }
       }
-      dirty.delete(key)
+      if (updates.length) {
+        const result = await api('/settings', { method: 'PUT', body: { updates } })
+        savedSettings = result.saved
+        restart = !!result.restart_required
+        hint = result.effective_hint || ''
+        const fieldMap = new Map()
+        for (const group of groups.value) {
+          for (const field of group.fields) fieldMap.set(`${field.section}::${field.key}`, field)
+        }
+        for (const item of updates) {
+          const key = `${item.section}::${item.key}`
+          const field = fieldMap.get(key)
+          initial[key] = field?.secret ? '' : item.value
+          if (field?.secret) {
+            draft[key] = ''
+            hasValue[key] = !!item.value
+          }
+          dirty.delete(key)
+        }
+        await templatesRef.value?.refreshChannels()
+      }
     }
-    toast(`${result.saved} 项配置已保存。${result.effective_hint || ''}`, result.restart_required ? 'warning' : 'success')
+    if (templatesDirty.value && templatesRef.value) {
+      savedTemplates = await templatesRef.value.save()
+    }
+    const parts = []
+    if (savedSettings) parts.push(`${savedSettings} 项配置`)
+    if (savedTemplates) parts.push(`${savedTemplates} 个通知模板`)
+    if (parts.length) {
+      toast(`${parts.join('、')}已保存。${hint}`, restart ? 'warning' : 'success')
+    } else {
+      toast('没有需要保存的修改', 'info')
+    }
   } catch (err) {
     toast(err.message, 'error')
   } finally {
@@ -185,6 +236,7 @@ function reset() {
     }
   }
   dirty.clear()
+  templatesRef.value?.reset()
 }
 
 async function testPush() {
@@ -217,6 +269,7 @@ async function importIni() {
     importOpen.value = false
     importText.value = ''
     await load()
+    await templatesRef.value?.refreshChannels()
   } catch (err) {
     toast(err.message, 'error')
   } finally {
@@ -225,7 +278,7 @@ async function importIni() {
 }
 
 function beforeUnload(event) {
-  if (dirtyCount.value) {
+  if (totalDirty.value) {
     event.preventDefault()
     event.returnValue = ''
   }
@@ -250,36 +303,43 @@ onBeforeUnmount(() => {
       <div class="toolbar">
         <div class="tabs" role="tablist" aria-label="配置分类">
           <button v-for="group in groups" :key="group.code" class="tab" role="tab"
-                  :aria-selected="activeGroup === group.code"
-                  :class="{ active: activeGroup === group.code }" @click="markGroup(group.code)">
+                  :aria-selected="!extraTab && activeGroup === group.code"
+                  :class="{ active: !extraTab && activeGroup === group.code }" @click="markGroup(group.code)">
             {{ group.label }}
+          </button>
+          <button class="tab" role="tab" :aria-selected="extraTab === 'platforms'"
+                  :class="{ active: extraTab === 'platforms' }" @click="markExtra('platforms')">
+            平台管理
           </button>
         </div>
         <div style="flex:1" />
-        <div class="input-group settings-search" style="max-width:240px;width:100%">
-          <span class="prefix"><Icon name="search" :size="14" /></span>
-          <input v-model="search" class="input" placeholder="搜索配置项" />
-        </div>
-        <button class="btn btn-sm" title="导入 ini" aria-label="导入 ini" @click="importOpen = true">
-          <Icon name="upload" :size="14" /><span class="desktop-only">导入 ini</span>
-        </button>
-        <button class="btn btn-sm" title="导出 ini" aria-label="导出 ini" @click="exportIni">
-          <Icon name="download" :size="14" /><span class="desktop-only">导出 ini</span>
-        </button>
+        <template v-if="!extraTab">
+          <div class="input-group settings-search" style="max-width:240px;width:100%">
+            <span class="prefix"><Icon name="search" :size="14" /></span>
+            <input v-model="search" class="input" placeholder="搜索配置项" />
+          </div>
+          <button class="btn btn-sm" title="导入 ini" aria-label="导入 ini" @click="importOpen = true">
+            <Icon name="upload" :size="14" /><span class="desktop-only">导入 ini</span>
+          </button>
+          <button class="btn btn-sm" title="导出 ini" aria-label="导出 ini" @click="exportIni">
+            <Icon name="download" :size="14" /><span class="desktop-only">导出 ini</span>
+          </button>
+        </template>
       </div>
     </div>
 
-    <div v-if="loading" class="card settings-panel">
-      <div class="skeleton" style="height:18px;width:160px;margin-bottom:18px" />
-      <div class="settings-fields">
-        <div v-for="n in 6" :key="n" class="field">
-          <div class="skeleton" style="height:12px;width:90px" />
-          <div class="skeleton" style="height:38px" />
+    <div v-show="!extraTab">
+      <div v-if="loading" class="card settings-panel">
+        <div class="skeleton" style="height:18px;width:160px;margin-bottom:18px" />
+        <div class="settings-fields">
+          <div v-for="n in 6" :key="n" class="field">
+            <div class="skeleton" style="height:12px;width:90px" />
+            <div class="skeleton" style="height:38px" />
+          </div>
         </div>
       </div>
-    </div>
 
-    <template v-else>
+      <template v-else>
       <div v-if="activeGroup === 'push'" class="card settings-panel" style="margin-bottom:16px">
         <div class="toolbar">
           <div>
@@ -378,15 +438,27 @@ onBeforeUnmount(() => {
         <div v-if="!fields.length" class="empty-state">没有匹配的配置项</div>
       </div>
 
+      <div v-show="activeGroup === 'push'" class="settings-push-templates">
+        <NotificationTemplatesPanel
+          v-if="templatesMounted"
+          ref="templatesRef"
+          :query="search"
+          @dirty-change="templatesDirty = $event"
+        />
+      </div>
+
       <div class="save-bar">
-        <span class="dirty-count">{{ dirtyCount ? `${dirtyCount} 项未保存` : '所有修改已保存' }}</span>
+        <span class="dirty-count">{{ dirtyLabel }}</span>
         <div style="flex:1" />
-        <button class="btn" :disabled="!dirtyCount || busy" @click="reset">重置</button>
-        <button class="btn btn-primary" :disabled="!dirtyCount || busy" @click="save">
-          {{ busy ? '保存中…' : '保存配置' }}
+        <button class="btn" :disabled="!totalDirty || busy" @click="reset">重置</button>
+        <button class="btn btn-primary" :disabled="!totalDirty || busy" @click="save">
+          {{ busy ? '保存中…' : '保存修改' }}
         </button>
       </div>
-    </template>
+      </template>
+    </div>
+
+    <PlatformManagerPanel v-show="extraTab === 'platforms'" />
 
     <Modal :open="importOpen" title="导入 config.ini" wide @close="importOpen = false">
       <p class="field-hint" style="margin-bottom:10px">

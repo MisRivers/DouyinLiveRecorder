@@ -21,6 +21,8 @@ const stateLabels = {
   recording: '录制中',
   stopping: '停止中',
   error: '异常',
+  scheduled: '计划外',
+  platform_disabled: '平台已禁用',
   stopped: '未启动',
   starting: '启动中',
   running: '运行中'
@@ -61,7 +63,8 @@ function startedAt(item) {
 
 function stateClass(state) {
   if (state === 'recording') return 'recording'
-  if (state === 'error') return 'error'
+  if (state === 'error' || state === 'platform_disabled') return 'error'
+  if (state === 'scheduled') return 'scheduled'
   if (['waiting', 'checking', 'live', 'stopping'].includes(state)) return 'waiting'
   return 'disabled'
 }
