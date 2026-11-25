@@ -30,6 +30,16 @@ bash scripts/release.sh release both
 
 命令会触发 GitHub Actions、等待运行结束，并在失败时返回非零退出码。正式版建议使用 `both`，或先执行 `release docker`、再执行 `release windows`，两条命令会自动共享同一个版本号。
 
+### beta 分支自动构建
+
+推送到 `beta` 分支会自动运行 `release.yml`，固定使用 `channel=beta`、`target=both`，同时构建 Docker 与 Windows 测试版：
+
+```bash
+git push github feature/web-ui:beta
+```
+
+每次推送都会生成新的 `1.1.0-beta.N` 版本：Docker 推送 `beta` 标签，Windows 更新滚动预发布 `webui-v1.1.0-beta`。适合连续调试，不需要执行 `release.sh`。
+
 ## 版本规则
 
 `VERSION` 文件保存下一个测试版基线，例如 `1.1.0`。
@@ -85,8 +95,8 @@ Windows 产物为 one-folder zip：
 | 内容 | Docker | Windows | 说明 |
 | --- | --- | --- | --- |
 | `run_webui.py`、`webui/backend` | 包含 | 包含 | 服务端与桌面入口 |
-| `src`、`i18n` | 包含 | 包含 | 上游取流与翻译 |
-| `msg_push.py`、`ffmpeg_install.py`、`pyproject.toml` | 包含 | 包含 | 通知、上游版本与兼容逻辑 |
+| `src` | 包含 | 包含 | 上游取流逻辑 |
+| `msg_push.py`、`pyproject.toml` | 包含 | 包含 | 通知与上游版本信息 |
 | 前端构建产物 | 构建阶段生成 | 构建阶段生成 | 不提交、不复用本地 dist |
 | `VERSION` | 构建参数写入镜像 | 构建后写入 dist | 版本唯一来源 |
 | `config/`、`config.ini` | 排除 | 排除 | 首次运行自动生成，可能含 Cookie/Token |
