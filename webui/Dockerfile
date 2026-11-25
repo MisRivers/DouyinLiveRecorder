@@ -9,6 +9,7 @@ COPY webui/frontend .
 RUN npm run build -- --outDir /out
 
 FROM ${PYTHON_IMAGE}
+ARG APP_VERSION=0.0.0-dev
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     DEBIAN_FRONTEND=noninteractive \
@@ -18,6 +19,9 @@ ENV PYTHONUNBUFFERED=1 \
     DLR_CONFIG_DIR=/app/config \
     DLR_DOWNLOAD_DIR=/app/downloads \
     DLR_LOG_DIR=/app/logs
+LABEL org.opencontainers.image.title="DouyinLiveRecorder WebUI" \
+      org.opencontainers.image.version="${APP_VERSION}" \
+      org.opencontainers.image.source="https://github.com/MisRivers/DouyinLiveRecorder"
 WORKDIR /app
 
 # ffmpeg 随镜像内置；Node.js 供上游签名脚本使用
@@ -38,16 +42,18 @@ COPY webui/requirements.txt ./webui-requirements.txt
 RUN pip install --no-cache-dir --index-url "${PIP_INDEX_URL}" \
     -r requirements.txt -r webui-requirements.txt
 
-COPY . /app
+# 只复制运行时需要的文件；config/data/downloads/logs 永远来自挂载卷
+COPY run_webui.py main.py msg_push.py ffmpeg_install.py pyproject.toml ./
+COPY src ./src
+COPY i18n ./i18n
+COPY webui/backend ./webui/backend
+COPY webui/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 COPY --from=frontend /out /app/webui/backend/static
 
-# 不把本地 config 打入镜像，避免 Cookie、Token 等敏感配置泄露；
-# 首次启动由应用按默认设置生成 config.ini
-RUN mkdir -p /opt/dlr-defaults/config /app/data /app/config /app/downloads /app/logs && \
-    useradd -m -u 10001 -s /usr/sbin/nologin dlr
-
-COPY webui/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+RUN echo "${APP_VERSION}" > /app/VERSION && \
+    mkdir -p /opt/dlr-defaults/config /app/data /app/config /app/downloads /app/logs && \
+    useradd -m -u 10001 -s /usr/sbin/nologin dlr && \
+    chmod +x /usr/local/bin/docker-entrypoint.sh
 
 EXPOSE 8642
 VOLUME ["/app/data", "/app/config", "/app/downloads", "/app/logs"]

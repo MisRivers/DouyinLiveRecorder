@@ -10,9 +10,13 @@ dist/DouyinLiveRecorderUI/ffmpeg/ before distributing.
 """
 from __future__ import annotations
 
+import argparse
+import json
+import os
 import shutil
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -33,6 +37,11 @@ def build_frontend() -> None:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--version", default="", help="version baked into the bundle")
+    args = parser.parse_args()
+    version = args.version.strip() or (ROOT / "VERSION").read_text(encoding="utf-8").strip()
+
     build_frontend()
     if not (STATIC / "index.html").exists():
         raise SystemExit("frontend build missing: webui/backend/static/index.html")
@@ -42,9 +51,22 @@ def main() -> None:
         raise SystemExit("PyInstaller is not installed. Run: python -m pip install pyinstaller")
     subprocess.run([sys.executable, "-m", "PyInstaller", "webui/webui.spec", "--noconfirm"],
                    cwd=ROOT, check=True)
-    ffmpeg_dir = ROOT / "dist" / "DouyinLiveRecorderUI" / "ffmpeg"
+    dist = ROOT / "dist" / "DouyinLiveRecorderUI"
+    dist.mkdir(parents=True, exist_ok=True)
+    (dist / "VERSION").write_text(version + "\n", encoding="utf-8")
+    build_info = {
+        "version": version,
+        "channel": os.environ.get("RELEASE_CHANNEL", "dev"),
+        "commit": os.environ.get("GITHUB_SHA", ""),
+        "built_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }
+    (dist / "build-info.json").write_text(
+        json.dumps(build_info, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    ffmpeg_dir = dist / "ffmpeg"
     ffmpeg_dir.mkdir(parents=True, exist_ok=True)
     print("\nBuild finished.")
+    print(f"version: {version}")
     print("Copy ffmpeg.exe and ffprobe.exe to:")
     print(f"  {ffmpeg_dir}")
     print("ffmpeg is intentionally not bundled in the executable.")

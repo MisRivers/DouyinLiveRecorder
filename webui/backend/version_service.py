@@ -5,14 +5,36 @@ import json
 import os
 import re
 import ssl
+import sys
 import threading
 import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
-APP_VERSION = "1.0.0"
+
+def _read_version() -> str:
+    override = os.environ.get("DLR_APP_VERSION", "").strip()
+    if override:
+        return override
+    candidates = []
+    if getattr(sys, "frozen", False):
+        candidates.append(Path(sys.executable).resolve().parent / "VERSION")
+    candidates.append(Path(__file__).resolve().parents[2] / "VERSION")
+    candidates.append(Path.cwd() / "VERSION")
+    for path in candidates:
+        try:
+            value = path.read_text(encoding="utf-8").strip()
+        except OSError:
+            continue
+        if value:
+            return value
+    return "1.0.0"
+
+
+APP_VERSION = _read_version()
 REPOSITORY = "MisRivers/DouyinLiveRecorder"
 RELEASES_URL = f"https://github.com/{REPOSITORY}/releases"
 LATEST_RELEASE_API = f"https://api.github.com/repos/{REPOSITORY}/releases/latest"
@@ -81,7 +103,7 @@ def _request_release() -> dict[str, Any]:
         }
         for item in payload.get("assets") or []
     ]
-    latest = str(payload.get("tag_name") or "").lstrip("vV")
+    latest = str(payload.get("tag_name") or "").removeprefix("webui-").lstrip("vV")
     return {
         "latest": latest or None,
         "release_url": payload.get("html_url") or RELEASES_URL,
