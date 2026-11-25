@@ -429,7 +429,7 @@ docker buildx build \
   -t misrivers/dlr-webui:1.1.0 --push .
 ```
 
-必须指定 `-f webui/Dockerfile`；根目录 `Dockerfile` 是上游命令行版本，不包含 Web 管理端。国内镜像参数可按网络情况替换或删除。
+必须指定 `-f webui/Dockerfile`。国内镜像参数可按网络情况替换或删除。
 
 ### 发布流程（beta / stable）
 
