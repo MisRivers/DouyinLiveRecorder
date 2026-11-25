@@ -63,7 +63,8 @@ def _lan_ip() -> str:
 
 
 class DesktopApp:
-    def __init__(self, root, app, config, db, no_browser: bool = False) -> None:
+    def __init__(self, root, app, config, db, no_browser: bool = False,
+                 self_test: bool = False) -> None:
         import tkinter as tk
 
         self.tk = tk
@@ -72,6 +73,7 @@ class DesktopApp:
         self.config = config
         self.db = db
         self.no_browser = no_browser
+        self.self_test = self_test
         self.server = None
         self.server_thread = None
         self.shutting_down = False
@@ -85,6 +87,8 @@ class DesktopApp:
         root.configure(bg="#f8fafc")
         root.protocol("WM_DELETE_WINDOW", self.on_close)
         self._build_ui()
+        if self_test:
+            return
         self._start_server()
         self._update_status()
         self.root.after(800, self._maybe_prompt_ffmpeg)
@@ -607,9 +611,16 @@ def main() -> None:
     except OSError:
         pass
     if "--self-test" in sys.argv:
-        probe = object.__new__(DesktopApp)
-        probe.config = config
-        print("self-test ffmpeg-ready:", DesktopApp._ffmpeg_ready(probe))
+        import tkinter as tk
+
+        from webui.backend.main import app as fastapi_app
+
+        root = tk.Tk()
+        root.withdraw()
+        desktop = DesktopApp(root, fastapi_app, config, db, no_browser=True, self_test=True)
+        print("self-test ffmpeg-ready:", desktop._ffmpeg_ready())
+        root.update_idletasks()
+        root.destroy()
         return
     db.init_db()
     if "--headless" in sys.argv or os.environ.get("DLR_DESKTOP_HEADLESS") == "1":
