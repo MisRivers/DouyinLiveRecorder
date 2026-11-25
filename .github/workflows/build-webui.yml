@@ -29,11 +29,30 @@ jobs:
       - name: Build one-folder exe
         run: python webui/build_exe.py
 
+      - name: Self test EXE
+        shell: pwsh
+        run: |
+          $smoke = Join-Path $env:RUNNER_TEMP "dlr-self-test"
+          New-Item -ItemType Directory -Force -Path $smoke | Out-Null
+          $env:DLR_DATA_DIR = Join-Path $smoke "data"
+          $env:DLR_CONFIG_DIR = Join-Path $smoke "config"
+          $env:DLR_DOWNLOAD_DIR = Join-Path $smoke "downloads"
+          $env:DLR_LOG_DIR = Join-Path $smoke "logs"
+          $process = Start-Process -FilePath "dist/DouyinLiveRecorderUI/DouyinLiveRecorderUI.exe" -ArgumentList "--self-test" -WorkingDirectory "dist/DouyinLiveRecorderUI" -PassThru -Wait
+          if ($process.ExitCode -ne 0) { throw "EXE self-test failed" }
+          Remove-Item -Recurse -Force $smoke -ErrorAction SilentlyContinue
+
       - name: Smoke test EXE (headless)
         shell: pwsh
         run: |
           $env:DLR_PORT = "18642"
           $env:DLR_DISABLE_WORKERS = "1"
+          $smoke = Join-Path $env:RUNNER_TEMP "dlr-smoke"
+          New-Item -ItemType Directory -Force -Path $smoke | Out-Null
+          $env:DLR_DATA_DIR = Join-Path $smoke "data"
+          $env:DLR_CONFIG_DIR = Join-Path $smoke "config"
+          $env:DLR_DOWNLOAD_DIR = Join-Path $smoke "downloads"
+          $env:DLR_LOG_DIR = Join-Path $smoke "logs"
           $exe = "dist/DouyinLiveRecorderUI/DouyinLiveRecorderUI.exe"
           $process = Start-Process -FilePath $exe -ArgumentList "--headless" -WorkingDirectory "dist/DouyinLiveRecorderUI" -PassThru -WindowStyle Hidden
           try {
@@ -49,6 +68,7 @@ jobs:
           } finally {
             if ($process) { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue }
           }
+          Remove-Item -Recurse -Force $smoke -ErrorAction SilentlyContinue
 
       - name: Prepare external ffmpeg directory
         shell: pwsh

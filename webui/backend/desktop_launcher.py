@@ -228,7 +228,7 @@ class DesktopApp:
             pass
 
     def _ffmpeg_ready(self) -> bool:
-        from .services import recorder_control
+        from webui.backend.services import recorder_control
 
         return (
             ffmpeg_setup.is_installed(self.config.ROOT_DIR)
@@ -606,6 +606,11 @@ def main() -> None:
         os.chdir(config.ROOT_DIR)
     except OSError:
         pass
+    if "--self-test" in sys.argv:
+        probe = object.__new__(DesktopApp)
+        probe.config = config
+        print("self-test ffmpeg-ready:", DesktopApp._ffmpeg_ready(probe))
+        return
     db.init_db()
     if "--headless" in sys.argv or os.environ.get("DLR_DESKTOP_HEADLESS") == "1":
         import uvicorn
