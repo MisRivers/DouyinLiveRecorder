@@ -51,3 +51,20 @@ def test_settings_meta_groups_and_types():
 def test_natural_sort():
     names = ["第10集.mp4", "第2集.mp4", "第1集.mp4"]
     assert sorted(names, key=natural_key) == ["第1集.mp4", "第2集.mp4", "第10集.mp4"]
+
+
+def test_install_ffmpeg_from_zip(tmp_path):
+    import zipfile
+
+    from webui.backend import ffmpeg_setup
+
+    archive = tmp_path / "ffmpeg.zip"
+    payload = b"MZ" + b"\0" * (1024 * 1024)
+    with zipfile.ZipFile(archive, "w") as handle:
+        handle.writestr("build/bin/ffmpeg.exe", payload)
+        handle.writestr("build/bin/ffprobe.exe", payload)
+
+    dest = ffmpeg_setup.install_from_zip(archive, tmp_path / "ffmpeg")
+
+    assert (dest / "ffmpeg.exe").read_bytes()[:2] == b"MZ"
+    assert (dest / "ffprobe.exe").stat().st_size >= ffmpeg_setup.MIN_BINARY_BYTES

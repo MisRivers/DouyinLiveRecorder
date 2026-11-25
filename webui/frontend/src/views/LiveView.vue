@@ -106,9 +106,11 @@ onBeforeUnmount(() => { if (timer) window.clearInterval(timer) })
 <template>
   <div>
     <div v-if="ffmpegMissing" class="card" style="border-color:#fde68a;background:var(--warning-soft);margin-bottom:16px">
-      <div class="card-body" style="display:flex;gap:10px;align-items:center;color:var(--warning)">
+      <div class="card-body" style="display:flex;gap:10px;align-items:center;color:var(--warning);flex-wrap:wrap">
         <Icon name="alert" :size="18" />
-        <span>未找到 ffmpeg。请将 ffmpeg 放在程序目录的 ffmpeg/ffmpeg.exe，或安装到系统 PATH 后再启动录制。</span>
+        <span style="flex:1;min-width:220px">未找到 ffmpeg。请将 ffmpeg 放在程序目录的 ffmpeg/ffmpeg.exe，或安装到系统 PATH 后再启动录制。</span>
+        <a class="btn btn-sm" style="background:#fff;border-color:#fde68a;color:#b45309"
+           href="https://www.gyan.dev/ffmpeg/builds/" target="_blank" rel="noopener">下载 FFmpeg</a>
       </div>
     </div>
     <div v-if="heartbeatStale" class="card" style="border-color:#fecaca;background:var(--danger-soft);margin-bottom:16px">

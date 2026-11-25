@@ -20,6 +20,7 @@ Docker 镜像：`misrivers/dlr-webui:latest`，支持 `linux/amd64` 与 `linux/a
 - [使用说明](#使用说明)
 - [配置项](#配置项)
 - [Docker 部署](#docker-部署)
+- [Windows EXE](#windows-exe)
 - [安全加固建议](#安全加固建议)
 - [数据、隐私与内容管理](#数据隐私与内容管理)
 - [常见问题](#常见问题)
@@ -529,6 +530,16 @@ docker compose -f docker-compose.webui.yaml up -d
 ```
 
 数据库结构会在启动时自动迁移。跨大版本升级前，建议先停止容器并完整备份 `data/` 与 `config/`。
+
+## Windows EXE
+
+Windows 免安装版本由 GitHub Actions 构建，产物为 `DouyinLiveRecorderUI-windows` artifact。
+
+- 解压后运行 `DouyinLiveRecorderUI.exe`；
+- 首次启动会检测 FFmpeg，缺失时弹出安装窗口，可自动下载 Windows 64 位版本并安装到 `ffmpeg/`；
+- 也可手动从 <https://www.gyan.dev/ffmpeg/builds/> 下载，解压后把 `bin/ffmpeg.exe` 与 `bin/ffprobe.exe` 放入程序目录的 `ffmpeg/`；
+- 已安装到系统 PATH 时不会提示；
+- EXE 不内置 FFmpeg，自动下载需要网络连接。
 
 ## 安全加固建议
 
