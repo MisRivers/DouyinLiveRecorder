@@ -418,26 +418,38 @@ npm run build
 ### 本地构建镜像
 
 ```bash
+python scripts/check_build_files.py
 docker buildx build \
   --platform linux/amd64,linux/arm64 \
+  --build-arg APP_VERSION=1.1.0 \
   --build-arg DEBIAN_MIRROR=https://mirrors.tuna.tsinghua.edu.cn/debian \
   --build-arg DEBIAN_SECURITY_MIRROR=https://mirrors.tuna.tsinghua.edu.cn/debian-security \
   --build-arg PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
   -f webui/Dockerfile \
-  -t misrivers/dlr-webui:latest --push .
+  -t misrivers/dlr-webui:1.1.0 --push .
 ```
 
 必须指定 `-f webui/Dockerfile`；根目录 `Dockerfile` 是上游命令行版本，不包含 Web 管理端。国内镜像参数可按网络情况替换或删除。
 
-### CI 自动发布
+### 发布流程（beta / stable）
 
-仓库通过 GitHub Actions 自动构建并推送 WebUI 镜像：
+仓库只保留统一发布工作流 `.github/workflows/release.yml`，通过 4 条命令发布：
 
-- 触发条件：推送到 `feature/web-ui` 或 `main` 分支、推送 `v*` 标签，或手动执行 `Build and Push WebUI Image`；
-- 发布标签：始终更新 `latest`，同时按分支、Git tag 与提交 SHA 生成附加标签；
-- 架构：`linux/amd64`、`linux/arm64`；
-- 发布后自动拉取 amd64 镜像并执行健康检查；
-- 需要在仓库 Secrets 中配置 `DOCKERHUB_USERNAME` 与 `DOCKERHUB_TOKEN`（兼容旧配置 `DOCKERHUB_PASSWORD`）。
+```bash
+bash scripts/release.sh beta docker
+bash scripts/release.sh beta windows
+bash scripts/release.sh release docker
+bash scripts/release.sh release windows
+```
+
+- beta：版本形如 `1.1.0-beta.N`，Docker 推送 `beta` 与版本标签，Windows 更新滚动预发布 `webui-v1.1.0-beta`；
+- stable：版本从最近正式标签自动递增，Docker 推送 `latest` 与版本标签；
+- `release docker` 与 `release windows` 共享同一个草稿 Release，两端资产齐全后自动转为正式版；
+- 构建前统一执行 `python scripts/check_build_files.py`，禁止把 `config/data/downloads/logs`、凭据与开发产物打入镜像或 EXE。
+
+完整规则、产物命名和构建内容标准见 [RELEASE.md](RELEASE.md)。
+
+需要在仓库 Secrets 中配置 `DOCKERHUB_USERNAME` 与 `DOCKERHUB_TOKEN`（兼容旧配置 `DOCKERHUB_PASSWORD`）。
 
 ### NAS 部署
 
@@ -534,7 +546,13 @@ docker compose -f docker-compose.webui.yaml up -d
 
 ## Windows EXE
 
-Windows 免安装版本由 GitHub Actions 构建，产物为 `DouyinLiveRecorderUI-windows` artifact。
+Windows 免安装版本由 GitHub Actions 构建，正式版资产为：
+
+```text
+DouyinLiveRecorderUI-<版本>-windows-x64.zip
+```
+
+测试版使用滚动资产 `DouyinLiveRecorderUI-windows-x64-beta.zip`，每次构建覆盖。
 
 - 解压后运行 `DouyinLiveRecorderUI.exe`；
 - 首次启动会检测 FFmpeg，缺失时弹出安装窗口，可自动下载 Windows 64 位版本并安装到 `ffmpeg/`；
@@ -542,14 +560,15 @@ Windows 免安装版本由 GitHub Actions 构建，产物为 `DouyinLiveRecorder
 - 也可手动从 <https://www.gyan.dev/ffmpeg/builds/> 下载，解压后把 `bin/ffmpeg.exe` 与 `bin/ffprobe.exe` 放入程序目录的 `ffmpeg/`；
 - 已安装到系统 PATH 时不会提示；
 - EXE 不内置 FFmpeg，自动下载需要网络连接。
+- 构建只包含运行时代码、前端静态文件与 `VERSION`，不会包含 `config/data/downloads/logs`。
 
 ## 版本更新
 
-- 当前应用版本定义在 [version_service.py](webui/backend/version_service.py)；
-- Windows EXE 启动后会自动检查 GitHub Releases，也可在窗口点击“检查更新”；
+- 版本唯一来源为根目录 [VERSION](VERSION)，发布时写入 Docker 镜像与 Windows 目录；
+- beta 版本由发布工作流自动编号，Windows EXE 启动后会自动检查 GitHub Releases；
 - Web 端“系统信息 → 版本更新”可手动检查并查看发行版说明；
 - 检测到新版本时会提供发行版页面链接，不会自动替换程序文件；
-- 发布新版本时创建 `v1.2.3` 形式的 Git tag 与 GitHub Release，CI 会按 tag 构建镜像；EXE 产物需手动上传到对应 Release；
+- 发布通过 `bash scripts/release.sh release docker` 与 `bash scripts/release.sh release windows` 完成，标签前缀为 `webui-v`，Release 由工作流自动创建与发布；
 - 如需提高 GitHub API 限额，可在运行环境设置 `DLR_GITHUB_TOKEN`。
 
 ## 安全加固建议
