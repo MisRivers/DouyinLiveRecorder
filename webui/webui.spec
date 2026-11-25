@@ -15,11 +15,9 @@ datas = [
     (str(ROOT / "webui" / "backend" / "static"), "webui/backend/static"),
     (str(ROOT / "webui" / "backend" / "schema.sql"), "webui/backend"),
     (str(ROOT / "src" / "javascript"), "src/javascript"),
-    (str(ROOT / "i18n"), "i18n"),
     # config.ini is intentionally not bundled: it may contain cookies/tokens,
     # and the app generates defaults in the runtime config directory.
     (str(ROOT / "msg_push.py"), "."),
-    (str(ROOT / "ffmpeg_install.py"), "."),
     (str(ROOT / "pyproject.toml"), "."),
 ]
 
