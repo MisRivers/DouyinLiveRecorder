@@ -17,12 +17,26 @@ from pathlib import Path
 from typing import Callable
 
 SOURCES = (
+    (
+        "gh-proxy.com",
+        "https://gh-proxy.com/https://github.com/BtbN/FFmpeg-Builds/"
+        "releases/download/latest/ffmpeg-master-latest-win64-gpl.zip",
+    ),
+    (
+        "ghproxy.net",
+        "https://ghproxy.net/https://github.com/BtbN/FFmpeg-Builds/"
+        "releases/download/latest/ffmpeg-master-latest-win64-gpl.zip",
+    ),
     ("gyan.dev", "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"),
     (
         "BtbN",
         "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/"
         "ffmpeg-master-latest-win64-gpl.zip",
     ),
+)
+USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 )
 MANUAL_URL = "https://www.gyan.dev/ffmpeg/builds/"
 OFFICIAL_URL = "https://ffmpeg.org/download.html"
@@ -92,7 +106,7 @@ def download_and_install(
         temp_path: Path | None = None
         try:
             request = urllib.request.Request(
-                url, headers={"User-Agent": "DLR-WebUI/1.0"}
+                url, headers={"User-Agent": USER_AGENT}
             )
             with urllib.request.urlopen(
                 request, timeout=60, context=_ssl_context()

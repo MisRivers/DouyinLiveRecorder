@@ -14,6 +14,7 @@ from .. import config, db, platform_registry
 from ..services import files_service, notification_service, recorder_control
 
 log = logging.getLogger("dlr.converter")
+_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
 
 
 def _ffmpeg() -> str:
@@ -31,7 +32,7 @@ def _ffprobe_duration(path: Path) -> float:
         result = subprocess.run(
             [probe, "-v", "error", "-show_entries", "format=duration",
              "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
-            capture_output=True, text=True, timeout=30,
+            capture_output=True, text=True, timeout=30, creationflags=_NO_WINDOW,
         )
         return float((result.stdout or "0").strip() or 0)
     except Exception:
@@ -83,7 +84,10 @@ def _convert(job: dict) -> tuple[bool, str | None]:
     log_path = Path(config.LOG_DIR) / f"convert-{job['id']}.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)
     with open(log_path, "wb") as log_file:
-        proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=log_file, text=True)
+        proc = subprocess.Popen(
+            args, stdout=subprocess.PIPE, stderr=log_file, text=True,
+            creationflags=_NO_WINDOW,
+        )
         last_update = 0.0
         while proc.poll() is None:
             line = proc.stdout.readline() if proc.stdout else ""

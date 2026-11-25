@@ -538,6 +538,7 @@ Windows 免安装版本由 GitHub Actions 构建，产物为 `DouyinLiveRecorder
 
 - 解压后运行 `DouyinLiveRecorderUI.exe`；
 - 首次启动会检测 FFmpeg，缺失时弹出安装窗口，可自动下载 Windows 64 位版本并安装到 `ffmpeg/`；
+- 自动下载优先使用国内 GitHub 加速镜像（gh-proxy.com / ghproxy.net），失败后回退 gyan.dev / BtbN；
 - 也可手动从 <https://www.gyan.dev/ffmpeg/builds/> 下载，解压后把 `bin/ffmpeg.exe` 与 `bin/ffprobe.exe` 放入程序目录的 `ffmpeg/`；
 - 已安装到系统 PATH 时不会提示；
 - EXE 不内置 FFmpeg，自动下载需要网络连接。

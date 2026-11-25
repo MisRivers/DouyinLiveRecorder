@@ -14,6 +14,7 @@ from ..errors import ApiError
 MEDIA_EXT = {".ts", ".mp4", ".mkv", ".flv", ".m4a", ".mp3"}
 PLAYABLE_EXT = {".mp4", ".m4a", ".mp3", ".ts", ".flv"}
 TYPE_RANK = {".mp4": 0, ".ts": 0, ".mkv": 0, ".flv": 0, ".m4a": 1, ".mp3": 1}
+_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
 
 
 def _is_hidden(name: str) -> bool:
@@ -410,7 +411,7 @@ def media_duration(rel_path: str) -> dict:
             result = subprocess.run(
                 [probe, "-v", "error", "-show_entries", "format=duration:stream=duration",
                  "-of", "json", str(source)],
-                capture_output=True, text=True, timeout=30,
+                capture_output=True, text=True, timeout=30, creationflags=_NO_WINDOW,
             )
             payload = json.loads(result.stdout or "{}")
             raw = (payload.get("format") or {}).get("duration")
@@ -427,7 +428,7 @@ def media_duration(rel_path: str) -> dict:
         try:
             result = subprocess.run(
                 [ffmpeg, "-hide_banner", "-i", str(source)],
-                capture_output=True, text=True, timeout=30,
+                capture_output=True, text=True, timeout=30, creationflags=_NO_WINDOW,
             )
             match = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", result.stderr or "")
             if match:

@@ -298,7 +298,7 @@ class DesktopApp:
         manual_btn.pack(side="left", padx=(8, 0))
         tk.Button(actions, text="稍后", relief="flat", padx=12, pady=6,
                   command=self._close_ffmpeg_dialog).pack(side="right")
-        tk.Label(frame, text="下载源：gyan.dev / BtbN FFmpeg-Builds（HTTPS）",
+        tk.Label(frame, text="下载源：国内加速镜像 / gyan.dev / BtbN（HTTPS）",
                  fg="#94a3b8", anchor="w").pack(fill="x", pady=(12, 0))
         win.protocol("WM_DELETE_WINDOW", self._close_ffmpeg_dialog)
 

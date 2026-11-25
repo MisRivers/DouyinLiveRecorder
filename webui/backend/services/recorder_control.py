@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
+from functools import lru_cache
 from pathlib import Path
 
 from .. import config, db, platform_registry
 from ..errors import ApiError
+
+_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
 
 
 def ffmpeg_path() -> str | None:
@@ -30,11 +34,15 @@ def ffprobe_path() -> str | None:
     return None
 
 
+@lru_cache(maxsize=8)
 def _version(binary: str | None) -> str | None:
     if not binary:
         return None
     try:
-        result = subprocess.run([binary, "-version"], capture_output=True, text=True, timeout=10)
+        result = subprocess.run(
+            [binary, "-version"], capture_output=True, text=True, timeout=10,
+            creationflags=_NO_WINDOW,
+        )
         return (result.stdout.splitlines() or [""])[0]
     except Exception:
         return None

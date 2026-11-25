@@ -22,6 +22,7 @@ from ..services import files_service, notification_service, schedule_service
 from .stream_resolver import resolve_stream, select_source_url
 
 log = logging.getLogger("dlr.recorder")
+_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
 
 NAME_BAD = re.compile(r'[\\/:*?"<>|&#,，。~！·\s]+')
 QUALITY_ZH = {"OD": "原画", "BD": "蓝光", "UHD": "超清", "HD": "高清", "SD": "标清", "LD": "流畅"}
@@ -84,7 +85,7 @@ def _run_script(command: str, record_name: str, save_file: str, save_type: str,
                 f"split_video_by_time:{split}",
                 f"converts_to_mp4:{to_mp4}",
             ]
-        subprocess.Popen([*tokens, *params])
+        subprocess.Popen([*tokens, *params], creationflags=_NO_WINDOW)
     except Exception as exc:
         log.warning("custom script failed: %s", exc)
 
@@ -420,9 +421,12 @@ class RecordingTask:
                 with open(log_path, "ab") as log_file:
                     kwargs = {"stdin": subprocess.PIPE, "stdout": subprocess.DEVNULL, "stderr": log_file}
                     if os.name == "nt":
-                        kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+                        kwargs["creationflags"] = (
+                            subprocess.CREATE_NEW_PROCESS_GROUP | _NO_WINDOW
+                        )
                         startup = subprocess.STARTUPINFO()
                         startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                        startup.wShowWindow = getattr(subprocess, "SW_HIDE", 0)
                         kwargs["startupinfo"] = startup
                     else:
                         kwargs["start_new_session"] = True
