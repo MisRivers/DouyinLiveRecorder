@@ -19,7 +19,7 @@ import urllib.request
 import webbrowser
 from logging.handlers import RotatingFileHandler
 
-from . import ffmpeg_setup, version_service
+from webui.backend import ffmpeg_setup, version_service
 
 
 def _redirect_streams() -> None:
