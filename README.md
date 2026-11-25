@@ -413,6 +413,30 @@ npm run build
 - 健康检查：`GET /api/system/health`
 - 镜像内置：FFmpeg、ffprobe、Node.js 运行时、前端静态文件
 
+### 本地构建镜像
+
+```bash
+docker buildx build \
+  --platform linux/amd64,linux/arm64 \
+  --build-arg DEBIAN_MIRROR=https://mirrors.tuna.tsinghua.edu.cn/debian \
+  --build-arg DEBIAN_SECURITY_MIRROR=https://mirrors.tuna.tsinghua.edu.cn/debian-security \
+  --build-arg PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
+  -f webui/Dockerfile \
+  -t misrivers/dlr-webui:latest --push .
+```
+
+必须指定 `-f webui/Dockerfile`；根目录 `Dockerfile` 是上游命令行版本，不包含 Web 管理端。国内镜像参数可按网络情况替换或删除。
+
+### CI 自动发布
+
+仓库通过 GitHub Actions 自动构建并推送 WebUI 镜像：
+
+- 触发条件：推送到 `feature/web-ui` 或 `main` 分支、推送 `v*` 标签，或手动执行 `Build and Push WebUI Image`；
+- 发布标签：始终更新 `latest`，同时按分支、Git tag 与提交 SHA 生成附加标签；
+- 架构：`linux/amd64`、`linux/arm64`；
+- 发布后自动拉取 amd64 镜像并执行健康检查；
+- 需要在仓库 Secrets 中配置 `DOCKERHUB_USERNAME` 与 `DOCKERHUB_TOKEN`（兼容旧配置 `DOCKERHUB_PASSWORD`）。
+
 ### NAS 部署
 
 1. 在 NAS 的 Docker 中拉取 `misrivers/dlr-webui:latest`；
