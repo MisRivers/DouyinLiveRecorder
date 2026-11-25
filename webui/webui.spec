@@ -9,6 +9,7 @@ from pathlib import Path
 from PyInstaller.utils.hooks import collect_submodules
 
 ROOT = Path(SPECPATH).parent
+ICON = ROOT / "webui" / "assets" / "logo.ico"
 
 datas = [
     (str(ROOT / "webui" / "backend" / "static"), "webui/backend/static"),
@@ -57,6 +58,7 @@ exe = EXE(
     [],
     exclude_binaries=True,
     name="DouyinLiveRecorderUI",
+    icon=str(ICON) if ICON.exists() else None,
     debug=False,
     strip=False,
     upx=False,
