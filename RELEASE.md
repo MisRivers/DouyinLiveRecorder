@@ -103,8 +103,8 @@ Windows 产物为 one-folder zip：
 | 内容 | Docker | Windows | 说明 |
 | --- | --- | --- | --- |
 | `run_webui.py`、`webui/backend` | 包含 | 包含 | 服务端与桌面入口 |
-| `src`、`i18n` | 包含 | 包含 | 上游取流与翻译 |
-| `msg_push.py`、`ffmpeg_install.py`、`pyproject.toml` | 包含 | 包含 | 通知、上游版本与兼容逻辑 |
+| `src` | 包含 | 包含 | 上游取流逻辑 |
+| `msg_push.py`、`pyproject.toml` | 包含 | 包含 | 通知与上游版本信息 |
 | 前端构建产物 | 构建阶段生成 | 构建阶段生成 | 不提交、不复用本地 dist |
 | `VERSION` | 构建参数写入镜像 | 构建后写入 dist | 版本唯一来源 |
 | `config/`、`config.ini` | 排除 | 排除 | 首次运行自动生成，可能含 Cookie/Token |
