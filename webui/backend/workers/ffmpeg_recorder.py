@@ -193,7 +193,9 @@ class RecordingTask:
             "-analyzeduration", analyzeduration, "-probesize", probesize,
             "-fflags", "+discardcorrupt",
             # FFmpeg 9.1 起 thread_queue_size 仅适用于输出，不能再放在 -i 前
-            "-reconnect_delay_max", "60", "-reconnect_streamed", "-reconnect_at_eof",
+            "-reconnect_delay_max", "60",
+            "-reconnect_streamed", "1",
+            "-reconnect_at_eof", "1",
             "-re", "-i", url,
             "-bufsize", bufsize, "-sn", "-dn",
             "-max_muxing_queue_size", max_queue,

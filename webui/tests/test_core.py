@@ -100,3 +100,5 @@ def test_ffmpeg_args_are_ffmpeg9_compatible():
     for option in ("-rw_timeout", "-user_agent", "-protocol_whitelist",
                    "-reconnect_streamed", "-reconnect_at_eof"):
         assert args.index(option) < input_index
+    assert args[args.index("-reconnect_streamed") + 1] == "1"
+    assert args[args.index("-reconnect_at_eof") + 1] == "1"
