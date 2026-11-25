@@ -87,7 +87,6 @@ jobs:
             type=raw,value=${{ needs.prepare.outputs.version }}
             type=raw,value=beta,enable=${{ (github.event.inputs.channel || 'beta') == 'beta' }}
             type=raw,value=latest,enable=${{ (github.event.inputs.channel || 'beta') == 'release' }}
-            type=sha,prefix=sha-
       - name: Build and push
         id: build
         uses: docker/build-push-action@v6
@@ -126,6 +125,12 @@ jobs:
           done
           docker logs dlr-ci
           exit 1
+      - name: Prune old Docker Hub tags
+        continue-on-error: true
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN || secrets.DOCKERHUB_PASSWORD }}
+        run: python3 scripts/prune_docker_tags.py --repo misrivers/dlr-webui --keep 5
       - name: Cleanup container
         if: always()
         run: docker rm -f dlr-ci || true

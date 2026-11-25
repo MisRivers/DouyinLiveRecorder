@@ -68,8 +68,16 @@ WebUI 的 Release 标签统一使用 `webui-v` 前缀（例如 `webui-v1.1.0`）
 
 | 通道 | 标签 |
 | --- | --- |
-| beta | `beta`、`1.1.0-beta.N`、`sha-<commit>` |
-| stable | `latest`、`1.1.0`、`sha-<commit>` |
+| beta | `beta`、`1.1.0-beta.N` |
+| stable | `latest`、`1.1.0` |
+
+标签保留策略：
+
+- `latest` 与 `beta` 永久保留；
+- beta 版本标签只保留最新 5 个（`1.1.0-beta.N`）；
+- stable 版本标签只保留最新 5 个（`1.1.0`）；
+- 不再生成 `sha-<commit>` 标签，历史 `sha-*`、`feature-web-ui`、`amd64`、`arm64` 由发布任务自动删除；
+- 自动清理需要 Docker Hub Token 具备 Delete 权限；权限不足时只输出警告，不影响发布。
 
 镜像内写入 `/app/VERSION`，应用启动后显示对应版本。CI 会拉取 amd64 镜像启动容器并检查 `/api/system/health`。
 
@@ -95,8 +103,8 @@ Windows 产物为 one-folder zip：
 | 内容 | Docker | Windows | 说明 |
 | --- | --- | --- | --- |
 | `run_webui.py`、`webui/backend` | 包含 | 包含 | 服务端与桌面入口 |
-| `src` | 包含 | 包含 | 上游取流逻辑 |
-| `msg_push.py`、`pyproject.toml` | 包含 | 包含 | 通知与上游版本信息 |
+| `src`、`i18n` | 包含 | 包含 | 上游取流与翻译 |
+| `msg_push.py`、`ffmpeg_install.py`、`pyproject.toml` | 包含 | 包含 | 通知、上游版本与兼容逻辑 |
 | 前端构建产物 | 构建阶段生成 | 构建阶段生成 | 不提交、不复用本地 dist |
 | `VERSION` | 构建参数写入镜像 | 构建后写入 dist | 版本唯一来源 |
 | `config/`、`config.ini` | 排除 | 排除 | 首次运行自动生成，可能含 Cookie/Token |
