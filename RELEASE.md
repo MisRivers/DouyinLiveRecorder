@@ -46,7 +46,7 @@ git push github feature/web-ui:beta
 
 | 通道 | 版本示例 | 自动规则 |
 | --- | --- | --- |
-| beta | `1.1.0-beta.1` | 读取 `VERSION`，从已有 `webui-v1.1.0-beta.N` 标签递增 N |
+| beta | `1.1.0-beta.1` | 读取 `VERSION`，N 从已有 `webui-v1.1.0-beta.N` 标签与 Docker Hub 最新 beta 版本中取较大值递增，每次构建唯一 |
 | stable | `1.1.0` | 有正式标签时按 patch/minor/major 递增；没有正式标签时使用 `VERSION` |
 
 WebUI 的 Release 标签统一使用 `webui-v` 前缀（例如 `webui-v1.1.0`），避免与上游项目的 `v4.x` 标签冲突。GitHub Release 标题仍显示为 `v1.1.0`。

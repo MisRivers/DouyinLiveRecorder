@@ -79,6 +79,29 @@ def beta_number(base: str, tags: list[str]) -> int:
     return max(numbers, default=0) + 1
 
 
+def docker_beta_number(base: str) -> int:
+    """Highest beta number already published on Docker Hub (0 when unknown)."""
+    repository = os.environ.get("DOCKERHUB_REPOSITORY", "misrivers/dlr-webui")
+    url = (
+        "https://hub.docker.com/v2/repositories/"
+        f"{repository}/tags/?page_size=100&ordering=last_updated"
+    )
+    try:
+        request = urllib.request.Request(url, headers={"User-Agent": "DLR-Release/1.0"})
+        with urllib.request.urlopen(request, timeout=10) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (urllib.error.URLError, OSError, ValueError):
+        return 0
+    prefix = f"{base}-beta."
+    numbers = [
+        int(str(item.get("name") or "")[len(prefix):])
+        for item in payload.get("results") or []
+        if str(item.get("name") or "").startswith(prefix)
+        and str(item.get("name") or "")[len(prefix):].isdigit()
+    ]
+    return max(numbers, default=0)
+
+
 def draft_version(repository: str, token: str) -> str | None:
     if not repository or not token:
         return None
@@ -133,7 +156,8 @@ def main() -> None:
         latest = latest_stable(tags)
         if latest and tuple(map(int, base.split(".")[:3])) <= tuple(map(int, latest.split(".")[:3])):
             base = bump(latest, "minor")
-        version = f"{base}-beta.{beta_number(base, tags)}"
+        next_number = max(beta_number(base, tags), docker_beta_number(base) + 1)
+        version = f"{base}-beta.{next_number}"
         prerelease = True
     else:
         existing = draft_version(
