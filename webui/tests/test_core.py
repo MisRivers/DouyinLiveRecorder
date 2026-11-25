@@ -77,3 +77,26 @@ def test_version_compare():
     assert not version_service.is_newer("1.2.2", "1.2.2")
     assert not version_service.is_newer(None, "1.2.2")
     assert version_service.is_newer("v2.0", "1.9.9")
+
+
+def test_ffmpeg_args_are_ffmpeg9_compatible():
+    from pathlib import Path
+
+    from webui.backend.workers.ffmpeg_recorder import RecordingTask
+
+    task = object.__new__(RecordingTask)
+    task.platform_code = "douyin"
+    task.room = {"url": "https://live.douyin.com/123"}
+    task.settings = {"视频分段时间(秒)": "1800"}
+    task._ffmpeg = lambda: "ffmpeg"
+
+    args = task._build_args(
+        "http://example.com/live.flv?codec=h264",
+        Path("out_%03d.ts"), "ts", True, None,
+    )
+
+    assert "-thread_queue_size" not in args
+    input_index = args.index("-i")
+    for option in ("-rw_timeout", "-user_agent", "-protocol_whitelist",
+                   "-reconnect_streamed", "-reconnect_at_eof"):
+        assert args.index(option) < input_index

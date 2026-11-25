@@ -190,10 +190,13 @@ class RecordingTask:
             self._ffmpeg(), "-y", "-v", "verbose", "-rw_timeout", rw_timeout,
             "-loglevel", "error", "-hide_banner", "-user_agent", user_agent,
             "-protocol_whitelist", "rtmp,crypto,file,http,https,tcp,tls,udp,rtp,httpproxy",
-            "-thread_queue_size", "1024", "-analyzeduration", analyzeduration,
-            "-probesize", probesize, "-fflags", "+discardcorrupt", "-re", "-i", url,
-            "-bufsize", bufsize, "-sn", "-dn", "-reconnect_delay_max", "60",
-            "-reconnect_streamed", "-reconnect_at_eof", "-max_muxing_queue_size", max_queue,
+            "-analyzeduration", analyzeduration, "-probesize", probesize,
+            "-fflags", "+discardcorrupt",
+            # FFmpeg 9.1 起 thread_queue_size 仅适用于输出，不能再放在 -i 前
+            "-reconnect_delay_max", "60", "-reconnect_streamed", "-reconnect_at_eof",
+            "-re", "-i", url,
+            "-bufsize", bufsize, "-sn", "-dn",
+            "-max_muxing_queue_size", max_queue,
             "-correct_ts_overflow", "1", "-avoid_negative_ts", "1",
         ]
         headers = _platform_headers(code, self.room["url"])
