@@ -2,9 +2,10 @@
 """Prune Docker Hub tags after a release build.
 
 Policy:
-- keep ``latest`` and ``beta`` permanently;
-- keep only the newest N beta version tags (``X.Y.Z-beta.N``);
-- keep only the newest N stable version tags (``X.Y.Z``);
+- keep ``latest`` permanently; keep ``beta`` while publishing beta builds;
+- beta builds keep only the newest N beta version tags (``X.Y.Z-beta.N``);
+- stable builds keep only the newest N stable version tags (``X.Y.Z``) and
+  remove all beta version tags plus the ``beta`` alias;
 - delete legacy ``sha-*``, ``feature-web-ui``, ``amd64`` and ``arm64`` tags.
 
 The script never fails a release build: missing credentials, insufficient
@@ -24,7 +25,6 @@ API = "https://hub.docker.com/v2"
 BETA = re.compile(r"^(\d+)\.(\d+)\.(\d+)-beta\.(\d+)$")
 STABLE = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
 SHA = re.compile(r"^sha-[0-9a-f]{7,40}$")
-ALWAYS_KEEP = {"latest", "beta"}
 LEGACY = {"feature-web-ui", "amd64", "arm64"}
 
 
@@ -80,14 +80,20 @@ def stable_key(name: str) -> tuple[int, int, int]:
     return tuple(int(match.group(i)) for i in (1, 2, 3))  # type: ignore[return-value]
 
 
-def plan(tags: dict[str, str], keep: int) -> list[str]:
+def plan(tags: dict[str, str], keep: int, channel: str = "beta") -> list[str]:
+    keep_tags = {"latest"} if channel == "release" else {"latest", "beta"}
     delete: list[str] = []
     for name in tags:
-        if name in ALWAYS_KEEP:
+        if name in keep_tags:
+            continue
+        if channel == "release" and (name == "beta" or BETA.match(name)):
+            delete.append(name)
             continue
         if SHA.match(name) or name in LEGACY:
             delete.append(name)
     for pattern, key in ((BETA, beta_key), (STABLE, stable_key)):
+        if channel == "release" and pattern is BETA:
+            continue
         versions = [name for name in tags if pattern.match(name)]
         versions.sort(key=key, reverse=True)
         delete.extend(versions[keep:])
@@ -98,6 +104,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo", default="misrivers/dlr-webui")
     parser.add_argument("--keep", type=int, default=5)
+    parser.add_argument("--channel", choices=("beta", "release"), default="beta")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
@@ -116,7 +123,7 @@ def main() -> int:
         print(f"skip prune: cannot list tags: {exc}")
         return 0
 
-    targets = plan(tags, max(1, args.keep))
+    targets = plan(tags, max(1, args.keep), args.channel)
     print(f"docker tags: {len(tags)} total, {len(targets)} to delete")
     for name in targets:
         print(f"  delete {name}")

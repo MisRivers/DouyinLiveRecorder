@@ -109,6 +109,16 @@ def now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def stable_notes(version: str) -> str:
+    """Release notes from RELEASE_NOTES.md, with {version} substituted."""
+    path = ROOT / "RELEASE_NOTES.md"
+    try:
+        text = path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+    return text.replace("{version}", version) if text else ""
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--channel", choices=("beta", "stable"), required=True)
@@ -155,7 +165,7 @@ def main() -> None:
         return
 
     tag = f"{TAG_PREFIX}{args.version}"
-    notes = args.notes or (
+    notes = args.notes or stable_notes(args.version) or (
         f"## v{args.version}\n\n"
         f"- Channel: stable\n"
         f"- Commit: `{commit}`\n"
