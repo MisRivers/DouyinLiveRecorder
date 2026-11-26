@@ -155,6 +155,12 @@ Docker 镜像：`misrivers/dlr-webui:latest`，支持 `linux/amd64` 与 `linux/a
 | --- | --- |
 | ![直播间管理](.screenshots/05-rooms.png) | ![录制文件播放](.screenshots/06-player.png) |
 
+Windows 桌面端：
+
+| 桌面主界面 | 重置管理员账号 |
+| --- | --- |
+| ![桌面主界面](.screenshots/10-desktop-exe.png) | ![重置管理员账号](.screenshots/11-desktop-reset.png) |
+
 ## 技术栈
 
 | 层次   | 技术                                                                |
@@ -415,6 +421,32 @@ npm run build
 - 健康检查：`GET /api/system/health`
 - 镜像内置：FFmpeg、ffprobe、Node.js 运行时、前端静态文件
 
+### 首次启动
+
+1. 在宿主机准备四个持久化目录，例如 `./config`、`./data`、`./downloads`、`./logs`，并确保运行用户可写。
+2. 拉取镜像：
+
+   ```bash
+   docker pull misrivers/dlr-webui:latest
+   ```
+
+3. 使用仓库内的 Compose 文件启动：
+
+   ```bash
+   docker compose -f docker-compose.webui.yaml up -d
+   ```
+
+4. 浏览器打开 `http://<服务器或 NAS 的 IP>:8642`。首次访问会进入“创建管理员”页面。
+5. 创建管理员后，在“直播间管理”新增直播间，填写平台 ID 或完整直播间地址。
+6. 在顶部录制控制中点击启动；开播的直播间会自动进入录制状态。
+7. 确认容器健康状态：
+
+   ```bash
+   curl http://127.0.0.1:8642/api/system/health
+   ```
+
+   正常时返回 `status: ok`；FFmpeg 缺失或数据库异常时会返回 `degraded`。
+
 ### 本地构建镜像
 
 ```bash
@@ -556,23 +588,55 @@ docker compose -f docker-compose.webui.yaml up -d
 
 ## Windows EXE
 
-Windows 免安装版本由 GitHub Actions 构建，正式版资产为：
+Windows 版是免安装的 one-folder 程序，适合不想安装 Docker 的桌面用户。
 
-```text
-DouyinLiveRecorderUI-<版本>-windows-x64.zip
-```
+### 下载与解压
 
-测试版使用滚动资产 `DouyinLiveRecorderUI-windows-x64-beta.zip`，每次构建覆盖。
+1. 打开 [Releases](https://github.com/MisRivers/DouyinLiveRecorder/releases)。正式版下载 `DouyinLiveRecorderUI-<版本>-windows-x64.zip`；测试版使用 `DouyinLiveRecorderUI-windows-x64-beta.zip`。
+2. 把压缩包解压到固定目录，例如 `D:\LiveRecorder`。不要直接在压缩包内运行。
+3. 目录中应包含 `DouyinLiveRecorderUI.exe`、`_internal/` 与 `VERSION`。`config/`、`data/`、`downloads/`、`logs/` 会在首次运行时自动创建。
 
-- 解压后运行 `DouyinLiveRecorderUI.exe`；
-- 忘记用户名或密码时，在主窗口点击“重置账号”，填写新用户名、新密码并确认；重置后网页登录会话会失效；
-- 关闭主窗口会询问后台运行或退出；后台运行会隐藏窗口并驻留系统托盘；
-- 首次启动会检测 FFmpeg，缺失时弹出安装窗口，可自动下载 Windows 64 位版本并安装到 `ffmpeg/`；
-- 自动下载优先使用国内 GitHub 加速镜像（gh-proxy.com / ghproxy.net），失败后回退 gyan.dev / BtbN；
-- 也可手动从 <https://www.gyan.dev/ffmpeg/builds/> 下载，解压后把 `bin/ffmpeg.exe` 与 `bin/ffprobe.exe` 放入程序目录的 `ffmpeg/`；
-- 已安装到系统 PATH 时不会提示；
-- EXE 不内置 FFmpeg，自动下载需要网络连接。
-- 构建只包含运行时代码、前端静态文件与 `VERSION`，不会包含 `config/data/downloads/logs`。
+### 首次启动
+
+1. 双击 `DouyinLiveRecorderUI.exe`。程序会先检测 FFmpeg。
+2. 缺少 FFmpeg 时，在弹窗中选择“自动下载并安装”。下载源依次尝试国内加速镜像、gyan.dev 与 BtbN。
+3. 也可以手动下载 Windows 64 位 FFmpeg，把 `bin/ffmpeg.exe` 与 `bin/ffprobe.exe` 放到程序目录的 `ffmpeg/`。已安装到系统 PATH 时不会提示。
+4. 服务启动后浏览器会自动打开 `http://127.0.0.1:8642`；未自动打开时，点击主窗口的“打开管理页面”。
+5. 首次访问创建管理员：用户名 3-32 位，密码至少 10 位且同时包含字母与数字。
+
+### 主窗口
+
+- 状态卡显示录制引擎状态、正在录制数量、转码队列与 FFmpeg 检测结果。
+- “本机访问”和“局域网访问”可一键复制地址；局域网地址供手机或其他电脑访问。
+- “检查更新”读取 GitHub Releases，发现新版本时提供发行版页面链接。
+- 底部按钮为“打开管理页面”和“重置账号”。
+
+### 系统托盘与退出
+
+- 点击窗口右上角关闭按钮，会询问“后台继续运行 / 关闭程序 / 取消”。
+- 选择“后台继续运行”后窗口隐藏，图标驻留在 Windows 右下角通知区域，录制服务继续运行。
+- 双击托盘图标，或右键选择“显示主窗口”，可以恢复窗口。
+- 托盘菜单还提供“打开管理页面”“重置账号”“退出程序”。
+- 选择“关闭程序”会先停止录制、等待文件收尾与转码任务，再退出。
+
+### 重置管理员账号
+
+忘记用户名或密码时，在主窗口点击“重置账号”，填写新用户名、新密码并确认。重置后所有网页登录会话失效，需要用新账号重新登录。
+
+### 数据与备份
+
+Windows 版的数据保存在程序目录：
+
+- `config/`：`config.ini` 与 `URL_config.ini`，可能包含 Cookie/Token；
+- `data/`：SQLite 数据库、会话密钥、备份；
+- `downloads/`：录制文件；
+- `logs/`：运行日志。
+
+升级时保留这四个目录，用新版本替换程序文件即可。迁移到另一台电脑时一并复制 `config/` 与 `data/`，录制文件按需复制 `downloads/`。
+
+### 卸载
+
+先退出程序，再删除整个程序目录。需要保留数据时，先备份 `config/`、`data/` 与 `downloads/`。
 
 ## 版本更新
 
