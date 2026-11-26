@@ -43,7 +43,7 @@ RUN pip install --no-cache-dir --index-url "${PIP_INDEX_URL}" \
     -r requirements.txt -r webui-requirements.txt
 
 # 只复制运行时需要的文件；config/data/downloads/logs 永远来自挂载卷
-COPY run_webui.py msg_push.py pyproject.toml ./
+COPY run_webui.py reset_account.py msg_push.py pyproject.toml ./
 COPY src ./src
 COPY webui/backend ./webui/backend
 COPY webui/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh

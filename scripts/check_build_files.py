@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 REQUIRED = [
     "VERSION",
     "run_webui.py",
+    "reset_account.py",
     "requirements.txt",
     "webui/requirements.txt",
     "webui/Dockerfile",

@@ -4,6 +4,7 @@ import base64
 import hashlib
 import hmac
 import secrets
+import sqlite3
 import threading
 import time
 from datetime import datetime, timedelta, timezone
@@ -214,3 +215,46 @@ def record_login_failure(key: str) -> None:
 def clear_login_failures(key: str) -> None:
     with _login_lock:
         _login_state.pop(key, None)
+
+
+PASSWORD_MIN_LENGTH = 10
+USERNAME_MIN_LENGTH = 3
+USERNAME_MAX_LENGTH = 32
+
+
+def validate_username(username: str) -> None:
+    if not username or len(username) < USERNAME_MIN_LENGTH or len(username) > USERNAME_MAX_LENGTH:
+        raise ValueError(
+            f"用户名长度需在 {USERNAME_MIN_LENGTH} 到 {USERNAME_MAX_LENGTH} 个字符之间"
+        )
+
+
+def validate_password(password: str) -> None:
+    if (
+        len(password) < PASSWORD_MIN_LENGTH
+        or not any(ch.isalpha() for ch in password)
+        or not any(ch.isdigit() for ch in password)
+    ):
+        raise ValueError(f"密码至少 {PASSWORD_MIN_LENGTH} 位，且包含字母与数字")
+
+
+def reset_admin_credentials(new_username: str, new_password: str) -> str:
+    """Replace the administrator username and password, revoking all sessions."""
+    username = (new_username or "").strip()
+    validate_username(username)
+    validate_password(new_password)
+    with db.connect() as conn:
+        row = conn.execute("SELECT id FROM admin_user ORDER BY id LIMIT 1").fetchone()
+        if not row:
+            raise ValueError("尚未初始化管理员账号")
+        try:
+            conn.execute(
+                "UPDATE admin_user SET username=?, password_hash=?, updated_at=? WHERE id=?",
+                (username, hash_password(new_password), db.now_iso(), row["id"]),
+            )
+            conn.commit()
+        except sqlite3.IntegrityError:
+            conn.rollback()
+            raise ValueError("用户名已被占用")
+    revoke_user_sessions(int(row["id"]))
+    return username
