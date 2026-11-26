@@ -1,8 +1,8 @@
 """Desktop launcher used by the Windows executable.
 
 The window stays open while the service runs. Closing the window asks whether
-to keep running in the background (minimize to taskbar) or shut down. A
-graceful shutdown first stops active recordings and lets them finalize.
+to keep running in the background (system tray) or shut down. A graceful
+shutdown first stops active recordings and lets them finalize.
 """
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ import urllib.request
 import webbrowser
 from logging.handlers import RotatingFileHandler
 
-from webui.backend import ffmpeg_setup, version_service
+from webui.backend import ffmpeg_setup, security, version_service
 
 
 def _redirect_streams() -> None:
@@ -80,6 +80,8 @@ class DesktopApp:
         self.url = f"http://127.0.0.1:{config.PORT}"
         self._ffmpeg_dialog = None
         self._ffmpeg_queue: queue.Queue = queue.Queue()
+        self._tray_icon = None
+        self._reset_dialog = None
 
         root.title("LiveRecorder")
         root.geometry("620x510")
@@ -183,14 +185,11 @@ class DesktopApp:
         tk.Button(actions, text="打开管理页面", bg=primary, fg="white", relief="flat",
                   activebackground="#1d4ed8", activeforeground="white", padx=16, pady=7,
                   cursor="hand2", command=self.open_browser).pack(side="left")
-        tk.Button(actions, text="最小化到后台", relief="flat", bg=surface, fg="#334155",
+        tk.Button(actions, text="重置账号", relief="flat", bg=surface, fg="#334155",
                   activebackground="#f1f5f9", padx=12, pady=7, cursor="hand2",
-                  command=self.background).pack(side="left", padx=(8, 0))
-        tk.Button(actions, text="退出程序", relief="flat", bg=surface, fg="#b91c1c",
-                  activebackground="#fef2f2", padx=12, pady=7, cursor="hand2",
-                  command=self.on_close).pack(side="right")
+                  command=self.show_reset_dialog).pack(side="left", padx=(8, 0))
 
-        tk.Label(outer, text="关闭窗口时可选择后台继续运行，或停止录制并退出。",
+        tk.Label(outer, text="关闭窗口会询问后台运行或退出；后台运行会驻留系统托盘。",
                  bg=bg, fg="#94a3b8", font=("Microsoft YaHei UI", 8),
                  anchor="w").pack(fill="x", pady=(12, 0))
 
@@ -512,30 +511,38 @@ class DesktopApp:
     def _ask_close_action(self) -> str:
         tk = self.tk
         dialog = tk.Toplevel(self.root)
-        dialog.title("关闭 DouyinLiveRecorder")
-        dialog.geometry("440x190")
+        dialog.title("关闭 LiveRecorder")
+        dialog.geometry("470x215")
         dialog.resizable(False, False)
         dialog.transient(self.root)
         dialog.grab_set()
+        dialog.configure(bg="#ffffff")
         result = {"value": "cancel"}
-        tk.Label(dialog, text="要如何处理正在运行的服务？", font=("Microsoft YaHei UI", 11, "bold"),
+        tk.Label(dialog, text="要如何处理正在运行的服务？", bg="#ffffff",
+                 fg="#0f172a", font=("Microsoft YaHei UI", 11, "bold"),
                  anchor="w").pack(fill="x", padx=20, pady=(18, 6))
-        tk.Label(dialog, text="后台继续运行会最小化到任务栏；关闭程序会先停止录制并尽量完成收尾。",
-                 fg="#64748b", wraplength=390, justify="left", anchor="w").pack(fill="x", padx=20)
+        tk.Label(
+            dialog,
+            text="后台继续运行会隐藏窗口并驻留系统托盘（右下角通知区域）；"
+                 "关闭程序会先停止录制并尽量完成收尾。",
+            bg="#ffffff", fg="#64748b", wraplength=420, justify="left", anchor="w",
+        ).pack(fill="x", padx=20)
 
         def choose(value: str) -> None:
             result["value"] = value
             dialog.destroy()
 
-        buttons = tk.Frame(dialog, pady=18)
+        buttons = tk.Frame(dialog, bg="#ffffff", pady=18)
         buttons.pack(fill="x", padx=20)
         tk.Button(buttons, text="后台继续运行", bg="#2563eb", fg="white", relief="flat",
                   activebackground="#1d4ed8", activeforeground="white", padx=12, pady=6,
-                  command=lambda: choose("background")).pack(side="left")
-        tk.Button(buttons, text="关闭程序", fg="#dc2626", relief="flat", padx=12, pady=6,
-                  command=lambda: choose("close")).pack(side="left", padx=(8, 0))
-        tk.Button(buttons, text="取消", relief="flat", padx=12, pady=6,
-                  command=lambda: choose("cancel")).pack(side="right")
+                  cursor="hand2", command=lambda: choose("background")).pack(side="left")
+        tk.Button(buttons, text="关闭程序", bg="#dc2626", fg="white", relief="flat",
+                  activebackground="#b91c1c", activeforeground="white", padx=12, pady=6,
+                  cursor="hand2", command=lambda: choose("close")).pack(side="left", padx=(8, 0))
+        tk.Button(buttons, text="取消", bg="#e2e8f0", fg="#0f172a", relief="flat",
+                  activebackground="#cbd5e1", activeforeground="#0f172a", padx=14, pady=6,
+                  cursor="hand2", command=lambda: choose("cancel")).pack(side="right")
         dialog.protocol("WM_DELETE_WINDOW", lambda: choose("cancel"))
         dialog.update_idletasks()
         x = self.root.winfo_rootx() + (self.root.winfo_width() - dialog.winfo_width()) // 2
@@ -544,9 +551,183 @@ class DesktopApp:
         self.root.wait_window(dialog)
         return result["value"]
 
+    def _tray_image(self):
+        from PIL import Image
+
+        path = self.config.FRONTEND_DIST / "assets" / "apple-touch-icon.png"
+        try:
+            with Image.open(path) as image:
+                return image.convert("RGBA").resize((64, 64))
+        except Exception:
+            return Image.new("RGBA", (64, 64), (37, 99, 235, 255))
+
+    def _tray_call(self, callback) -> None:
+        try:
+            self.root.after(0, callback)
+        except Exception:
+            pass
+
+    def _ensure_tray(self) -> bool:
+        if self._tray_icon is not None:
+            return True
+        try:
+            import pystray
+        except Exception:
+            logging.getLogger("dlr.desktop").warning("pystray unavailable")
+            return False
+        try:
+            menu = pystray.Menu(
+                pystray.MenuItem(
+                    "显示主窗口",
+                    lambda icon, item: self._tray_call(self.show_window),
+                    default=True,
+                ),
+                pystray.MenuItem(
+                    "打开管理页面",
+                    lambda icon, item: self._tray_call(self.open_browser),
+                ),
+                pystray.MenuItem(
+                    "重置账号",
+                    lambda icon, item: self._tray_call(self.show_reset_dialog),
+                ),
+                pystray.Menu.SEPARATOR,
+                pystray.MenuItem(
+                    "退出程序",
+                    lambda icon, item: self._tray_call(self.shutdown),
+                ),
+            )
+            icon = pystray.Icon("LiveRecorder", self._tray_image(), "LiveRecorder", menu)
+            threading.Thread(target=icon.run, name="tray", daemon=True).start()
+            self._tray_icon = icon
+            return True
+        except Exception:
+            logging.getLogger("dlr.desktop").exception("tray icon failed")
+            self._tray_icon = None
+            return False
+
+    def _stop_tray(self) -> None:
+        icon = self._tray_icon
+        self._tray_icon = None
+        if icon is not None:
+            try:
+                icon.stop()
+            except Exception:
+                pass
+
+    def show_window(self) -> None:
+        try:
+            self.root.deiconify()
+            self.root.lift()
+            self.root.focus_force()
+        except Exception:
+            pass
+
+    def show_reset_dialog(self) -> None:
+        from tkinter import messagebox
+
+        self.show_window()
+        if self._reset_dialog is not None and self._reset_dialog.winfo_exists():
+            self._reset_dialog.lift()
+            return
+        tk = self.tk
+        win = tk.Toplevel(self.root)
+        win.title("重置管理员账号")
+        win.geometry("440x385")
+        win.resizable(False, False)
+        win.transient(self.root)
+        win.grab_set()
+        win.configure(bg="#ffffff")
+        self._reset_dialog = win
+
+        frame = tk.Frame(win, bg="#ffffff", padx=22, pady=18)
+        frame.pack(fill="both", expand=True)
+        tk.Label(frame, text="重置管理员账号", bg="#ffffff", fg="#0f172a",
+                 font=("Microsoft YaHei UI", 13, "bold"), anchor="w").pack(fill="x")
+        tk.Label(
+            frame,
+            text="可同时修改忘记的用户名和密码；修改后所有网页登录会话会失效。",
+            bg="#ffffff", fg="#64748b", font=("Microsoft YaHei UI", 9),
+            wraplength=390, justify="left", anchor="w",
+        ).pack(fill="x", pady=(4, 12))
+        tk.Label(frame, text="新用户名", bg="#ffffff", fg="#334155", anchor="w",
+                 font=("Microsoft YaHei UI", 9)).pack(fill="x")
+        username_var = tk.StringVar()
+        username_entry = tk.Entry(frame, textvariable=username_var,
+                                  font=("Microsoft YaHei UI", 10), relief="solid", bd=1)
+        username_entry.pack(fill="x", ipady=4, pady=(3, 10))
+        tk.Label(frame, text="新密码", bg="#ffffff", fg="#334155", anchor="w",
+                 font=("Microsoft YaHei UI", 9)).pack(fill="x")
+        password_var = tk.StringVar()
+        password_entry = tk.Entry(frame, textvariable=password_var, show="*",
+                                  font=("Microsoft YaHei UI", 10), relief="solid", bd=1)
+        password_entry.pack(fill="x", ipady=4, pady=(3, 10))
+        tk.Label(frame, text="确认新密码", bg="#ffffff", fg="#334155", anchor="w",
+                 font=("Microsoft YaHei UI", 9)).pack(fill="x")
+        confirm_var = tk.StringVar()
+        confirm_entry = tk.Entry(frame, textvariable=confirm_var, show="*",
+                                 font=("Microsoft YaHei UI", 10), relief="solid", bd=1)
+        confirm_entry.pack(fill="x", ipady=4, pady=(3, 8))
+        hint_var = tk.StringVar(value="用户名 3-32 位；密码至少 10 位，且同时包含字母与数字")
+        hint = tk.Label(frame, textvariable=hint_var, bg="#ffffff", fg="#94a3b8",
+                        font=("Microsoft YaHei UI", 8), anchor="w", wraplength=390,
+                        justify="left")
+        hint.pack(fill="x")
+
+        def close() -> None:
+            self._reset_dialog = None
+            try:
+                win.destroy()
+            except Exception:
+                pass
+
+        def submit() -> None:
+            username = username_var.get().strip()
+            password = password_var.get()
+            if password != confirm_var.get():
+                hint_var.set("两次输入的密码不一致")
+                hint.config(fg="#dc2626")
+                return
+            try:
+                username = security.reset_admin_credentials(username, password)
+            except ValueError as exc:
+                hint_var.set(str(exc))
+                hint.config(fg="#dc2626")
+                return
+            except Exception as exc:
+                hint_var.set(f"重置失败：{exc}")
+                hint.config(fg="#dc2626")
+                return
+            close()
+            self.status_var.set(f"管理员账号已重置为 {username}")
+            messagebox.showinfo(
+                "账号已重置",
+                f"管理员账号已更新为 {username}，请使用新用户名和密码重新登录。",
+                parent=self.root,
+            )
+
+        actions = tk.Frame(frame, bg="#ffffff")
+        actions.pack(fill="x", pady=(12, 0))
+        tk.Button(actions, text="确认重置", bg="#2563eb", fg="white", relief="flat",
+                  activebackground="#1d4ed8", activeforeground="white", padx=14, pady=6,
+                  cursor="hand2", command=submit).pack(side="left")
+        tk.Button(actions, text="取消", bg="#e2e8f0", fg="#0f172a", relief="flat",
+                  activebackground="#cbd5e1", activeforeground="#0f172a", padx=14, pady=6,
+                  cursor="hand2", command=close).pack(side="left", padx=(8, 0))
+        win.protocol("WM_DELETE_WINDOW", close)
+        username_entry.focus_set()
+        win.bind("<Return>", lambda event: submit())
+        win.update_idletasks()
+        x = self.root.winfo_rootx() + (self.root.winfo_width() - win.winfo_width()) // 2
+        y = self.root.winfo_rooty() + (self.root.winfo_height() - win.winfo_height()) // 2
+        win.geometry(f"+{max(0, x)}+{max(0, y)}")
+
     def background(self) -> None:
-        self.status_var.set("已最小化到任务栏，服务继续运行")
-        self.root.iconify()
+        if self._ensure_tray():
+            self.status_var.set("已隐藏到系统托盘，服务继续运行")
+            self.root.withdraw()
+        else:
+            self.status_var.set("已最小化到任务栏，服务继续运行")
+            self.root.iconify()
 
     def on_close(self) -> None:
         if self.shutting_down:
@@ -593,6 +774,7 @@ class DesktopApp:
             self.server.should_exit = True
         if self.server_thread:
             self.server_thread.join(timeout=5)
+        self._stop_tray()
         try:
             self.root.destroy()
         except Exception:
