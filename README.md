@@ -451,6 +451,16 @@ bash scripts/release.sh release windows
 
 需要在仓库 Secrets 中配置 `DOCKERHUB_USERNAME` 与 `DOCKERHUB_TOKEN`（兼容旧配置 `DOCKERHUB_PASSWORD`）。
 
+### 重置管理员用户名和密码
+
+忘记管理员用户名或密码时，在宿主机执行容器内的重置脚本，不需要进入网页：
+
+```bash
+docker exec -it -u dlr dlr-webui python reset_account.py
+```
+
+按提示输入新用户名和新密码（用户名 3-32 位，密码至少 10 位且包含字母与数字）。重置后所有网页登录会话会失效，需要重新登录。容器名不是 `dlr-webui` 时替换为实际名称；非交互场景可追加 `--username 新用户名 --password '新密码'`。
+
 ### NAS 部署
 
 1. 在 NAS 的 Docker 中拉取 `misrivers/dlr-webui:latest`；
@@ -555,6 +565,8 @@ DouyinLiveRecorderUI-<版本>-windows-x64.zip
 测试版使用滚动资产 `DouyinLiveRecorderUI-windows-x64-beta.zip`，每次构建覆盖。
 
 - 解压后运行 `DouyinLiveRecorderUI.exe`；
+- 忘记用户名或密码时，在主窗口点击“重置账号”，填写新用户名、新密码并确认；重置后网页登录会话会失效；
+- 关闭主窗口会询问后台运行或退出；后台运行会隐藏窗口并驻留系统托盘；
 - 首次启动会检测 FFmpeg，缺失时弹出安装窗口，可自动下载 Windows 64 位版本并安装到 `ffmpeg/`；
 - 自动下载优先使用国内 GitHub 加速镜像（gh-proxy.com / ghproxy.net），失败后回退 gyan.dev / BtbN；
 - 也可手动从 <https://www.gyan.dev/ffmpeg/builds/> 下载，解压后把 `bin/ffmpeg.exe` 与 `bin/ffprobe.exe` 放入程序目录的 `ffmpeg/`；
