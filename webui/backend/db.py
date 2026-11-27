@@ -46,6 +46,8 @@ DEFAULT_SETTINGS = [
     ("录制设置", "自定义脚本执行命令", ""),
     ("录制设置", "使用代理录制的平台(逗号分隔)", "tiktok, sooplive, pandalive, winktv, flextv, popkontv, twitch, liveme, showroom, chzzk, shopee, shp, youtube, faceit"),
     ("录制设置", "额外使用代理录制的平台(逗号分隔)", ""),
+    ("录制设置", "启用streamget解析(是/否)", "是"),
+    ("录制设置", "streamget解析平台(逗号分隔)", "*"),
     ("推送配置", "直播状态推送渠道", ""),
     ("推送配置", "钉钉推送接口链接", ""),
     ("推送配置", "微信推送接口链接", ""),
