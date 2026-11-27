@@ -159,7 +159,7 @@ Windows 桌面端：
 
 | 桌面主界面 | 重置管理员账号 |
 | --- | --- |
-| ![桌面主界面](.screenshots/10-desktop-exe.png) | ![重置管理员账号](.screenshots/11-desktop-reset.png) |
+| ![桌面主界面](https://raw.githubusercontent.com/MisRivers/DouyinLiveRecorder/main/.screenshots/10-desktop-exe.png) | ![重置管理员账号](https://raw.githubusercontent.com/MisRivers/DouyinLiveRecorder/main/.screenshots/11-desktop-reset.png) |
 
 ## 技术栈
 
@@ -384,6 +384,11 @@ npm run build
 | `DLR_LOG_LEVEL`       | `info`          | 日志级别                               |
 | `DLR_TRUST_PROXY`     | 未设置             | 设为 `1` 时信任反向代理传入的 `X-Forwarded-For` |
 | `DLR_DISABLE_WORKERS` | 未设置             | 设为 `1` 时只启动 Web，不启动录制/转码 Worker    |
+| `DLR_STREAMGET_ENABLED` | 跟随设置（默认是） | 可选覆盖；设为 `0` 可临时关闭 streamget |
+| `DLR_STREAMGET_PLATFORMS` | `*`            | 平台白名单，逗号分隔；`*` 表示全部 streamget 支持平台 |
+| `DLR_STREAMGET_TIMEOUT` | `25`          | 单次 streamget 请求超时秒数                    |
+| `DLR_STREAMGET_COOLDOWN` | `300`         | 连续失败后的冷却秒数，避免反复请求失败平台      |
+| `DLR_STREAMGET_VERIFY_OFFLINE` | `0`     | 设为 `1` 时 streamget 判定未开播后仍用 DLR 复核 |
 | `PUID` / `PGID`       | `1000`          | Docker 运行用户与目录属主                   |
 | `TZ`                  | `Asia/Shanghai` | 容器时区                               |
 
@@ -492,6 +497,42 @@ docker exec -it -u dlr dlr-webui python reset_account.py
 ```
 
 按提示输入新用户名和新密码（用户名 3-32 位，密码至少 10 位且包含字母与数字）。重置后所有网页登录会话会失效，需要重新登录。容器名不是 `dlr-webui` 时替换为实际名称；非交互场景可追加 `--username 新用户名 --password '新密码'`。
+
+### 实验：streamget 解析后端
+
+当前开发版内置可选的 `streamget` 解析层，用于接入比 DLR 更新的平台取流实现。Docker 与 Windows EXE 实例默认开启，解析失败会自动回退 DLR，不影响现有录制。
+
+默认对所有 streamget 支持的平台优先使用 streamget。`custom`、流星、皮皮、17Live 等 streamget 未适配的平台继续使用 DLR。
+
+如需关闭：
+
+- 在“系统配置 → 录制设置”中把“启用 streamget 解析”设为“否”；
+- “streamget 解析平台”可继续调整要启用的平台代码。
+
+环境变量 `DLR_STREAMGET_ENABLED` 和 `DLR_STREAMGET_PLATFORMS` 只用于临时覆盖，部署时不配置也会默认开启。
+
+工作方式：
+
+1. 对 streamget 支持的平台优先尝试 streamget；
+2. 解析成功则直接录制；
+3. 超时、网络、Cookie 失效、平台结构变化、缺少 Node、返回空流地址等任何异常都会记录日志并自动回退 DLR；
+4. 同一平台连续失败 2 次后进入 5 分钟冷却，期间直接走 DLR；
+5. `DLR_STREAMGET_VERIFY_OFFLINE=1` 时，streamget 判定未开播后还会用 DLR 复核，避免漏录。
+
+注意：
+
+- streamget 的部分平台依赖 Node.js。Docker 镜像已内置 Node；Windows EXE 需要安装 Node，否则这些平台会回退 DLR 或提示缺少 Node。
+- 蓝光画质在 streamget 中没有对应等级，会映射为 UHD；超清也映射为 UHD，高清映射为 HD。
+- `custom` 平台始终使用 DLR。
+
+上线前可用诊断脚本对比两个后端：
+
+```bash
+python scripts/diagnose_stream.py --url "https://live.douyin.com/123456" --platform douyin
+python scripts/diagnose_stream.py --url "https://play.sooplive.co.kr/xxx" --json --show-url
+```
+
+脚本只读取设置，不写数据库；默认隐藏 Cookie、Token 和流地址查询参数。退出码：`0` 两端都成功，`1` 只有一端成功，`2` 两端都失败。
 
 ### NAS 部署
 
