@@ -3,3 +3,4 @@ uvicorn[standard]>=0.30
 python-multipart>=0.0.9
 pystray>=0.19.5
 Pillow>=10.0.0
+streamget>=4.0.10

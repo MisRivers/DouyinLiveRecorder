@@ -6,7 +6,7 @@ sibling `ffmpeg` directory next to DouyinLiveRecorderUI.exe.
 """
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 ROOT = Path(SPECPATH).parent
 ICON = ROOT / "webui" / "assets" / "logo.ico"
@@ -20,11 +20,13 @@ datas = [
     (str(ROOT / "msg_push.py"), "."),
     (str(ROOT / "pyproject.toml"), "."),
 ]
+datas += collect_data_files("streamget")
 
 hiddenimports = (
     collect_submodules("uvicorn")
     + collect_submodules("fastapi")
     + collect_submodules("src")
+    + collect_submodules("streamget")
     + [
         "webui.backend.main",
         "webui.backend.desktop_launcher",
