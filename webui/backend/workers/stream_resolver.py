@@ -7,6 +7,8 @@ return values into the shape the recorder and UI expect.
 from __future__ import annotations
 
 import asyncio
+import logging
+import os
 from typing import Any
 from urllib.parse import urlparse
 
@@ -14,6 +16,9 @@ from src import spider, stream
 from src.utils import handle_proxy_addr
 
 from .. import db
+from . import streamget_resolver
+
+LOGGER = logging.getLogger("dlr.stream_resolver")
 
 QUALITY_CODE = {
     "原画": "OD",
@@ -137,7 +142,8 @@ def _normalize(info: Any, quality: str) -> dict:
     return result
 
 
-def resolve_stream(room: dict, settings: dict) -> dict:
+def resolve_stream(room: dict, settings: dict, backend: str = "auto") -> dict:
+    settings = settings or {}
     code = room["platform_code"]
     url = room["url"]
     quality = QUALITY_CODE.get(room.get("quality") or "原画", "OD")
@@ -148,12 +154,38 @@ def resolve_stream(room: dict, settings: dict) -> dict:
         raise RuntimeError("该平台需要代理，请在设置中配置代理地址并启用对应平台")
 
     if code == "custom":
+        if backend == "streamget":
+            raise RuntimeError("streamget 不支持 custom 平台，请使用 DLR")
         lowered = url.lower()
         if ".flv" in lowered:
             return {"anchor_name": f"自定义直播_{abs(hash(url)) % 100000}", "is_live": True,
                     "flv_url": url, "record_url": url}
         return {"anchor_name": f"自定义直播_{abs(hash(url)) % 100000}", "is_live": True,
                 "m3u8_url": url, "record_url": url}
+
+    if backend in ("auto", "streamget"):
+        if backend == "streamget" or streamget_resolver.enabled(settings):
+            result, error = streamget_resolver.try_resolve(
+                room,
+                settings,
+                cookies=cookies,
+                proxy=proxy,
+                credentials=streamget_resolver.credentials_from_settings(code, settings),
+                force=backend == "streamget",
+            )
+            if result is not None:
+                verify_offline = os.environ.get("DLR_STREAMGET_VERIFY_OFFLINE", "0") == "1"
+                if result.get("is_live") or not verify_offline:
+                    cookie_key = COOKIE_KEYS.get(code)
+                    if result.get("new_cookies") and cookie_key:
+                        _update_setting("Cookie", cookie_key, result["new_cookies"])
+                    return result
+                LOGGER.info("streamget 判定 %s 未开播，按配置再用 DLR 复核", code)
+            elif backend == "streamget":
+                detail = error or streamget_resolver.StreamgetError("unknown", "未知错误")
+                raise RuntimeError(f"streamget 解析失败[{detail.code}]：{detail}") from detail
+            elif error is not None:
+                LOGGER.warning("streamget 解析失败，回退 DLR：%s", error)
 
     if code == "douyin":
         if "v.douyin.com" not in url and "/user/" not in url:
